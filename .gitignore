@@ -19,7 +19,6 @@ dist/
 *.egg-info/
 *.egg
 MANIFEST
-*.spec
 
 # --- Test / coverage ---
 .pytest_cache/
