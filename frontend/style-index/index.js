@@ -332,9 +332,15 @@ function renderResults(data) {
 
     document.getElementById('resultsArea').classList.add('active');
     document.getElementById('launchArea').classList.add('active');
+    // [SETUP-RULE] Terreno, meteo e stato truppe qui sopra servono a simulare
+    // lo scenario: in partita non si scelgono, altrimenti basterebbe
+    // selezionare le condizioni più comode. Va detto qui, dove si preme il
+    // bottone.
     document.getElementById('launchSummary').innerHTML =
         `Strategia consigliata: <strong>${top.name}</strong>`
-        + ` · spesa ${data.selected_units_cost} grux, residuo ${data.remaining_grux}.`;
+        + ` · spesa ${data.selected_units_cost} grux, residuo ${data.remaining_grux}.`
+        + `<br><span class="launch-note">In battaglia porti solo l'esercito:`
+        + ` il meteo viene sorteggiato e le truppe partono sempre fresche.</span>`;
     updatePhase('done');
 }
 

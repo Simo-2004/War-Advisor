@@ -388,9 +388,14 @@ async def game_confirm(request: ConfirmRequest):
 
     Azioni:
       1. Valida il terreno.
-      2. Costruisce l'esercito dell'IA (ai_builder) in base alle condizioni di partenza.
+      2. Sorteggia le condizioni di partenza e costruisce l'esercito dell'IA.
       3. Crea la GameSession con mappa procedurale.
       4. Ritorna lo stato iniziale della partita (mappa + info eserciti).
+
+    [SETUP-RULE] Terreno, meteo e stato truppe della richiesta descrivono la
+    SIMULAZIONE fatta nella schermata iniziale: non sono condizioni che il
+    giocatore possa portarsi in partita. Il meteo si sorteggia, le truppe
+    partono fresche e il terreno di casa è quello della cella del castello.
     """
     global _active_session
 
@@ -411,6 +416,9 @@ async def game_confirm(request: ConfirmRequest):
         _active_session = started["session"]
         session_dict = _active_session.to_dict()
         session_dict["message"] = started["message"]
+        # Il seed effettivo, anche quando la richiesta non ne portava uno:
+        # senza, una partita interessante non si può più rigiocare.
+        session_dict["map_seed"] = started["map_seed"]
         return session_dict
 
     except ValueError as e:
