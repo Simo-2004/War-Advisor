@@ -43,6 +43,16 @@ I FILE PRODOTTI                       (cartella `reports/esperimenti/`)
                  taratura del layer compatibilita. Serve a poter dire quale
                  versione del software ha generato i numeri della tesi.
 
+Con `--analizza` si aggiungono le sintesi del punto 4.5, ricavate dai CSV
+sopra senza rigiocare niente:
+
+  analisi_condizioni.csv   media, deviazione standard, numerosita' e
+                           intervallo al 95% per ogni condizione e metrica
+  analisi_confronti.csv    differenze fra condizioni con il loro intervallo
+  analisi_scenari.csv      lo stesso quadro scenario per scenario
+  grafico_*.svg            barre con barre d'errore, boxplot, compatibilita'
+                           contro esito, ablation delle dottrine
+
 ──────────────────────────────────────────────────────────────────────
 USO
 
@@ -51,6 +61,7 @@ USO
   python scripts/csv_batch_test.py --esperimento E2 --difficolta hard normal
   python scripts/csv_batch_test.py --lista-scenari
   python scripts/csv_batch_test.py --verifica      # requisiti e cooldown dottrine
+  python scripts/csv_batch_test.py --analizza      # sintesi e grafici dei dati gia' prodotti
 
 Rifare un solo esperimento senza rieseguire tutto, e poi ricomporre il dataset:
 
@@ -73,12 +84,13 @@ con lo stesso `--seed` si riottengono esattamente le stesse partite.
 import argparse
 import csv
 import json
+import math
 import random
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -1122,6 +1134,643 @@ def scrivi_manifest(args: argparse.Namespace, conteggi: Dict[str, int],
 
 
 # ══════════════════════════════════════════════════════════════════
+# ANALISI DEI RISULTATI
+# ══════════════════════════════════════════════════════════════════
+#
+# Punto 4.5 della specifica: per ogni condizione media, deviazione standard e
+# numero di repliche; per gli esiti binari il win rate con intervallo di
+# confidenza; grafici semplici. Legge i CSV gia' prodotti, non rigioca nulla.
+#
+# I grafici sono SVG scritti a mano invece che matplotlib: evita una
+# dipendenza in piu' da installare, resta vettoriale per la stampa della tesi
+# e si apre in qualsiasi browser.
+
+#: Metriche continue da riassumere, con etichetta leggibile e unita'.
+METRICHE = [
+    ("forza_residua_pct", "Forza residua", "%"),
+    ("perdite_proprie", "Perdite proprie", "unita"),
+    ("perdite_nemiche", "Perdite inflitte", "unita"),
+    ("morale_residuo", "Morale residuo", "0-100"),
+    ("turni_totali", "Durata", "turni"),
+    ("scontri", "Scontri", "n"),
+    ("celle_player", "Celle controllate", "n"),
+]
+
+#: Ordine di presentazione delle condizioni.
+ORDINE_CONDIZIONI = ["top_ranked", "intermedia", "worst_ranked",
+                     "dottrine_on", "dottrine_off"]
+
+Z95 = 1.959964
+
+
+def _media_e_ic(valori: Sequence[float]) -> Dict[str, Any]:
+    """Media, deviazione standard campionaria e intervallo di confidenza al 95%."""
+    puliti = [float(v) for v in valori if v == v and v != ""]
+    n = len(puliti)
+    if n == 0:
+        return {"n": 0, "media": "", "dev_std": "", "err_std": "",
+                "ic95_min": "", "ic95_max": ""}
+    media = sum(puliti) / n
+    if n < 2:
+        return {"n": n, "media": round(media, 4), "dev_std": "", "err_std": "",
+                "ic95_min": "", "ic95_max": ""}
+    varianza = sum((v - media) ** 2 for v in puliti) / (n - 1)
+    dev = math.sqrt(varianza)
+    err = dev / math.sqrt(n)
+    return {"n": n, "media": round(media, 4), "dev_std": round(dev, 4),
+            "err_std": round(err, 4),
+            "ic95_min": round(media - Z95 * err, 4),
+            "ic95_max": round(media + Z95 * err, 4)}
+
+
+def _proporzione_e_ic(successi: int, totale: int) -> Dict[str, Any]:
+    """Proporzione con intervallo di Wilson.
+
+    Il metodo di Wilson invece dell'approssimazione normale: con tassi vicini
+    a 0 o a 1 — il caso della difficolta' 'hard', dove il giocatore vince quasi
+    mai — l'intervallo normale sborda sotto zero e non significa piu' nulla.
+    """
+    if totale == 0:
+        return {"n": 0, "media": "", "dev_std": "", "err_std": "",
+                "ic95_min": "", "ic95_max": ""}
+    p = successi / totale
+    denominatore = 1 + Z95 ** 2 / totale
+    centro = (p + Z95 ** 2 / (2 * totale)) / denominatore
+    meta = (Z95 * math.sqrt(p * (1 - p) / totale
+                            + Z95 ** 2 / (4 * totale ** 2))) / denominatore
+    dev = math.sqrt(p * (1 - p)) if 0 <= p <= 1 else 0.0
+    return {"n": totale, "media": round(p * 100, 4),
+            "dev_std": round(dev * 100, 4),
+            "err_std": round(math.sqrt(p * (1 - p) / totale) * 100, 4),
+            "ic95_min": round(max(0.0, centro - meta) * 100, 4),
+            "ic95_max": round(min(1.0, centro + meta) * 100, 4)}
+
+
+def _differenza_medie(a: Sequence[float], b: Sequence[float]) -> Dict[str, Any]:
+    """Differenza fra due medie indipendenti, con intervallo al 95%."""
+    pa = [float(v) for v in a if v == v and v != ""]
+    pb = [float(v) for v in b if v == v and v != ""]
+    if len(pa) < 2 or len(pb) < 2:
+        return {}
+    ma, mb = sum(pa) / len(pa), sum(pb) / len(pb)
+    va = sum((v - ma) ** 2 for v in pa) / (len(pa) - 1)
+    vb = sum((v - mb) ** 2 for v in pb) / (len(pb) - 1)
+    err = math.sqrt(va / len(pa) + vb / len(pb))
+    diff = ma - mb
+    return {"differenza": round(diff, 4), "err_std": round(err, 4),
+            "ic95_min": round(diff - Z95 * err, 4),
+            "ic95_max": round(diff + Z95 * err, 4),
+            "ic95_esclude_zero": bool(abs(diff) > Z95 * err)}
+
+
+def _differenza_proporzioni(sa: int, na: int, sb: int, nb: int) -> Dict[str, Any]:
+    """Differenza fra due tassi, con intervallo al 95%."""
+    if na == 0 or nb == 0:
+        return {}
+    pa, pb = sa / na, sb / nb
+    err = math.sqrt(pa * (1 - pa) / na + pb * (1 - pb) / nb)
+    diff = pa - pb
+    return {"differenza": round(diff * 100, 4), "err_std": round(err * 100, 4),
+            "ic95_min": round((diff - Z95 * err) * 100, 4),
+            "ic95_max": round((diff + Z95 * err) * 100, 4),
+            "ic95_esclude_zero": bool(abs(diff) > Z95 * err)}
+
+
+def _quartili(valori: Sequence[float]) -> Optional[Dict[str, float]]:
+    """Cinque numeri per il boxplot, con baffi a 1.5 volte lo scarto interquartile."""
+    puliti = sorted(float(v) for v in valori if v == v and v != "")
+    if not puliti:
+        return None
+
+    def percentile(q: float) -> float:
+        if len(puliti) == 1:
+            return puliti[0]
+        posizione = q * (len(puliti) - 1)
+        basso = int(math.floor(posizione))
+        alto = min(basso + 1, len(puliti) - 1)
+        return puliti[basso] + (puliti[alto] - puliti[basso]) * (posizione - basso)
+
+    q1, mediana, q3 = percentile(0.25), percentile(0.5), percentile(0.75)
+    iqr = q3 - q1
+    dentro = [v for v in puliti if q1 - 1.5 * iqr <= v <= q3 + 1.5 * iqr] or puliti
+    return {"min": dentro[0], "q1": q1, "mediana": mediana, "q3": q3,
+            "max": dentro[-1], "n": len(puliti)}
+
+
+# ── Grafici SVG ───────────────────────────────────────────────────
+
+LARGHEZZA, ALTEZZA = 760, 420
+MARGINE = {"sinistra": 72, "destra": 24, "alto": 52, "basso": 86}
+COLORI = ["#2f6f9f", "#8f4fa0", "#b5602f", "#3f8f6f", "#9f4f5f"]
+
+
+def _telaio(titolo: str, etichetta_y: str, valore_max: float,
+            tacche: int = 5) -> Tuple[List[str], float, float, float]:
+    """Assi, griglia e titolo. Ritorna (pezzi, x0, y0, altezza utile)."""
+    x0 = MARGINE["sinistra"]
+    y0 = ALTEZZA - MARGINE["basso"]
+    utile = ALTEZZA - MARGINE["alto"] - MARGINE["basso"]
+    larghezza_utile = LARGHEZZA - MARGINE["sinistra"] - MARGINE["destra"]
+    pezzi = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{LARGHEZZA}" '
+        f'height="{ALTEZZA}" viewBox="0 0 {LARGHEZZA} {ALTEZZA}" '
+        f'font-family="Segoe UI, Arial, sans-serif">',
+        f'<rect width="{LARGHEZZA}" height="{ALTEZZA}" fill="#ffffff"/>',
+        f'<text x="{LARGHEZZA/2}" y="28" text-anchor="middle" font-size="16" '
+        f'font-weight="600" fill="#1a1a1a">{_xml(titolo)}</text>',
+    ]
+    for i in range(tacche + 1):
+        valore = valore_max * i / tacche
+        y = y0 - utile * i / tacche
+        pezzi.append(f'<line x1="{x0}" y1="{y:.1f}" x2="{x0+larghezza_utile}" '
+                     f'y2="{y:.1f}" stroke="#e4e4e4" stroke-width="1"/>')
+        pezzi.append(f'<text x="{x0-9}" y="{y+4:.1f}" text-anchor="end" '
+                     f'font-size="11" fill="#555">{valore:.0f}</text>')
+    pezzi.append(f'<line x1="{x0}" y1="{y0}" x2="{x0+larghezza_utile}" y2="{y0}" '
+                 f'stroke="#333" stroke-width="1.4"/>')
+    pezzi.append(f'<line x1="{x0}" y1="{MARGINE["alto"]}" x2="{x0}" y2="{y0}" '
+                 f'stroke="#333" stroke-width="1.4"/>')
+    pezzi.append(f'<text x="18" y="{MARGINE["alto"]+utile/2}" font-size="12" '
+                 f'fill="#333" transform="rotate(-90 18 {MARGINE["alto"]+utile/2})" '
+                 f'text-anchor="middle">{_xml(etichetta_y)}</text>')
+    return pezzi, x0, y0, utile
+
+
+def _xml(testo: str) -> str:
+    return (str(testo).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _etichetta_x(pezzi: List[str], x: float, y0: float, testo: str) -> None:
+    pezzi.append(f'<text x="{x:.1f}" y="{y0+18}" text-anchor="middle" '
+                 f'font-size="11" fill="#333">{_xml(testo)}</text>')
+
+
+def grafico_barre(titolo: str, etichetta_y: str, gruppi: List[str],
+                  serie: List[Tuple[str, List[Optional[Dict[str, Any]]]]]) -> str:
+    """Barre raggruppate con barre d'errore (intervallo di confidenza al 95%)."""
+    valori = [v["ic95_max"] for _, dati in serie for v in dati
+              if v and isinstance(v.get("ic95_max"), (int, float))]
+    valori += [v["media"] for _, dati in serie for v in dati
+               if v and isinstance(v.get("media"), (int, float))]
+    massimo = max(valori) * 1.12 if valori else 1.0
+    pezzi, x0, y0, utile = _telaio(titolo, etichetta_y, massimo)
+    larghezza_utile = LARGHEZZA - MARGINE["sinistra"] - MARGINE["destra"]
+
+    passo = larghezza_utile / max(1, len(gruppi))
+    larghezza_barra = passo * 0.72 / max(1, len(serie))
+    for indice_gruppo, gruppo in enumerate(gruppi):
+        centro = x0 + passo * (indice_gruppo + 0.5)
+        _etichetta_x(pezzi, centro, y0, gruppo)
+        for indice_serie, (nome, dati) in enumerate(serie):
+            voce = dati[indice_gruppo] if indice_gruppo < len(dati) else None
+            if not voce or not isinstance(voce.get("media"), (int, float)):
+                continue
+            offset = (indice_serie - (len(serie) - 1) / 2) * larghezza_barra
+            x = centro + offset - larghezza_barra / 2
+            altezza = utile * voce["media"] / massimo
+            colore = COLORI[indice_serie % len(COLORI)]
+            pezzi.append(f'<rect x="{x:.1f}" y="{y0-altezza:.1f}" '
+                         f'width="{larghezza_barra*0.92:.1f}" height="{altezza:.1f}" '
+                         f'fill="{colore}" opacity="0.88"/>')
+            # Centro della barra: serve sia alla barra d'errore sia all'etichetta,
+            # quindi va calcolato comunque, anche quando l'intervallo manca.
+            xm = x + larghezza_barra * 0.46
+            cima = y0 - altezza
+            if isinstance(voce.get("ic95_min"), (int, float)):
+                y_basso = y0 - utile * voce["ic95_min"] / massimo
+                y_alto = y0 - utile * voce["ic95_max"] / massimo
+                cima = min(cima, y_alto)
+                pezzi.append(f'<line x1="{xm:.1f}" y1="{y_basso:.1f}" x2="{xm:.1f}" '
+                             f'y2="{y_alto:.1f}" stroke="#222" stroke-width="1.3"/>')
+                for yy in (y_basso, y_alto):
+                    pezzi.append(f'<line x1="{xm-4:.1f}" y1="{yy:.1f}" '
+                                 f'x2="{xm+4:.1f}" y2="{yy:.1f}" stroke="#222" '
+                                 f'stroke-width="1.3"/>')
+            # L'etichetta va sopra il baffo superiore, non sopra la barra:
+            # altrimenti i due si sovrappongono e il numero diventa illeggibile.
+            pezzi.append(f'<text x="{xm:.1f}" y="{cima-6:.1f}" text-anchor="middle" '
+                         f'font-size="10" fill="#333">{voce["media"]:.1f}</text>')
+    pezzi.append(_legenda([nome for nome, _ in serie]))
+    pezzi.append("</svg>")
+    return "\n".join(pezzi)
+
+
+def grafico_box(titolo: str, etichetta_y: str,
+                categorie: List[Tuple[str, Optional[Dict[str, float]]]]) -> str:
+    """Boxplot: mediana, quartili e baffi."""
+    valori = [v for _, q in categorie if q for v in (q["max"], q["q3"])]
+    massimo = max(valori) * 1.12 if valori else 1.0
+    pezzi, x0, y0, utile = _telaio(titolo, etichetta_y, massimo)
+    larghezza_utile = LARGHEZZA - MARGINE["sinistra"] - MARGINE["destra"]
+    passo = larghezza_utile / max(1, len(categorie))
+    larghezza_box = min(74.0, passo * 0.46)
+
+    def y_di(v: float) -> float:
+        return y0 - utile * v / massimo
+
+    for indice, (nome, q) in enumerate(categorie):
+        centro = x0 + passo * (indice + 0.5)
+        _etichetta_x(pezzi, centro, y0, nome)
+        if not q:
+            continue
+        colore = COLORI[indice % len(COLORI)]
+        # I baffi solo FUORI dalla scatola, come vuole la convenzione: un'unica
+        # linea da min a max attraverserebbe il box e si confonderebbe con la
+        # mediana.
+        pezzi.append(f'<line x1="{centro}" y1="{y_di(q["min"]):.1f}" x2="{centro}" '
+                     f'y2="{y_di(q["q1"]):.1f}" stroke="#444" stroke-width="1.2"/>')
+        pezzi.append(f'<line x1="{centro}" y1="{y_di(q["q3"]):.1f}" x2="{centro}" '
+                     f'y2="{y_di(q["max"]):.1f}" stroke="#444" stroke-width="1.2"/>')
+        for v in (q["min"], q["max"]):
+            pezzi.append(f'<line x1="{centro-larghezza_box/4:.1f}" y1="{y_di(v):.1f}" '
+                         f'x2="{centro+larghezza_box/4:.1f}" y2="{y_di(v):.1f}" '
+                         f'stroke="#444" stroke-width="1.2"/>')
+        alto, basso = y_di(q["q3"]), y_di(q["q1"])
+        pezzi.append(f'<rect x="{centro-larghezza_box/2:.1f}" y="{alto:.1f}" '
+                     f'width="{larghezza_box:.1f}" height="{max(1.0, basso-alto):.1f}" '
+                     f'fill="{colore}" opacity="0.30" stroke="{colore}" stroke-width="1.4"/>')
+        pezzi.append(f'<line x1="{centro-larghezza_box/2:.1f}" y1="{y_di(q["mediana"]):.1f}" '
+                     f'x2="{centro+larghezza_box/2:.1f}" y2="{y_di(q["mediana"]):.1f}" '
+                     f'stroke="{colore}" stroke-width="2.4"/>')
+        pezzi.append(f'<text x="{centro}" y="{y0+34}" text-anchor="middle" '
+                     f'font-size="10" fill="#777">n={q["n"]}</text>')
+    pezzi.append("</svg>")
+    return "\n".join(pezzi)
+
+
+def grafico_linea(titolo: str, etichetta_x: str, etichetta_y: str,
+                  punti: List[Tuple[float, Dict[str, Any]]]) -> str:
+    """Spezzata con banda di confidenza: compatibilita' -> esito."""
+    if not punti:
+        return ""
+    massimo = max(p[1]["ic95_max"] for p in punti
+                  if isinstance(p[1].get("ic95_max"), (int, float))) * 1.15 or 1.0
+    pezzi, x0, y0, utile = _telaio(titolo, etichetta_y, massimo)
+    larghezza_utile = LARGHEZZA - MARGINE["sinistra"] - MARGINE["destra"]
+    xs = [p[0] for p in punti]
+    x_min, x_max = min(xs), max(xs)
+    campo = (x_max - x_min) or 1.0
+
+    def x_di(v: float) -> float:
+        return x0 + larghezza_utile * 0.06 + (larghezza_utile * 0.88) * (v - x_min) / campo
+
+    def y_di(v: float) -> float:
+        return y0 - utile * v / massimo
+
+    banda_alto = " ".join(f"{x_di(x):.1f},{y_di(d['ic95_max']):.1f}" for x, d in punti)
+    banda_basso = " ".join(f"{x_di(x):.1f},{y_di(d['ic95_min']):.1f}"
+                           for x, d in reversed(punti))
+    pezzi.append(f'<polygon points="{banda_alto} {banda_basso}" fill="{COLORI[0]}" '
+                 f'opacity="0.16"/>')
+    linea = " ".join(f"{x_di(x):.1f},{y_di(d['media']):.1f}" for x, d in punti)
+    pezzi.append(f'<polyline points="{linea}" fill="none" stroke="{COLORI[0]}" '
+                 f'stroke-width="2.2"/>')
+    for x, d in punti:
+        pezzi.append(f'<circle cx="{x_di(x):.1f}" cy="{y_di(d["media"]):.1f}" r="4" '
+                     f'fill="{COLORI[0]}"/>')
+        _etichetta_x(pezzi, x_di(x), y0, f"{x:.0f}")
+        pezzi.append(f'<text x="{x_di(x):.1f}" y="{y0+34}" text-anchor="middle" '
+                     f'font-size="10" fill="#777">n={d["n"]}</text>')
+    pezzi.append(f'<text x="{x0+larghezza_utile/2}" y="{ALTEZZA-26}" '
+                 f'text-anchor="middle" font-size="12" fill="#333">{_xml(etichetta_x)}</text>')
+    pezzi.append("</svg>")
+    return "\n".join(pezzi)
+
+
+def _legenda(nomi: List[str]) -> str:
+    pezzi = []
+    x = MARGINE["sinistra"]
+    y = ALTEZZA - 30
+    for indice, nome in enumerate(nomi):
+        colore = COLORI[indice % len(COLORI)]
+        pezzi.append(f'<rect x="{x}" y="{y-9}" width="12" height="12" fill="{colore}" '
+                     f'opacity="0.88"/>')
+        pezzi.append(f'<text x="{x+17}" y="{y+1}" font-size="11" fill="#333">'
+                     f'{_xml(nome)}</text>')
+        x += 24 + 7.4 * len(nome)
+    return "\n".join(pezzi)
+
+
+# ── Lettura e aggregazione ────────────────────────────────────────
+
+def _leggi_csv(percorso: Path, separatore: str) -> List[Dict[str, Any]]:
+    if not percorso.exists():
+        return []
+    with percorso.open(encoding="utf-8-sig", newline="") as flusso:
+        return list(csv.DictReader(flusso, delimiter=separatore))
+
+
+def _numero(riga: Dict[str, Any], chiave: str) -> Optional[float]:
+    valore = riga.get(chiave, "")
+    if valore in ("", None):
+        return None
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return None
+
+
+def _chiave_ordine(condizione: str) -> int:
+    return (ORDINE_CONDIZIONI.index(condizione)
+            if condizione in ORDINE_CONDIZIONI else len(ORDINE_CONDIZIONI))
+
+
+def _ordina_difficolta(valori: Iterable[str]) -> List[str]:
+    """Per durezza crescente, non in ordine alfabetico.
+
+    Alfabeticamente verrebbe easy, hard, normal: un grafico in cui la
+    difficolta' non cresce da sinistra a destra si legge male.
+    """
+    return sorted(set(valori),
+                  key=lambda d: DIFFICOLTA.index(d) if d in DIFFICOLTA else len(DIFFICOLTA))
+
+
+def analizza(cartella: Path, separatore: str) -> int:
+    """Aggrega i CSV gia' prodotti in tabelle di sintesi e grafici.
+
+    Non rigioca nulla: legge `runs.csv` e produce medie, deviazioni standard,
+    numerosita', win rate con intervallo di confidenza, i confronti fra
+    condizioni e i grafici del punto 4.5.
+    """
+    runs = _leggi_csv(cartella / "runs.csv", separatore)
+    if not runs:
+        print(f"Nessun runs.csv leggibile in {_percorso_leggibile(cartella)}.")
+        return 1
+    print(f"Analisi di {len(runs)} partite da {_percorso_leggibile(cartella)}")
+
+    righe_condizioni = _tabella_condizioni(runs)
+    righe_confronti = _tabella_confronti(runs)
+    righe_scenari = _tabella_scenari(runs)
+
+    scrivi_csv(righe_condizioni, cartella / "analisi_condizioni.csv", separatore)
+    scrivi_csv(righe_confronti, cartella / "analisi_confronti.csv", separatore)
+    scrivi_csv(righe_scenari, cartella / "analisi_scenari.csv", separatore)
+    _scrivi_grafici(runs, cartella)
+    _stampa_sintesi(righe_condizioni, righe_confronti)
+    return 0
+
+
+def _gruppi(runs: List[Dict[str, Any]], esperimento: str) -> List[Tuple[str, str]]:
+    """Coppie (difficolta, condizione) presenti, piu' la riga aggregata."""
+    ordine_d = _ordina_difficolta(r["difficolta_ia"] for r in runs
+                                  if r.get("esperimento") == esperimento)
+    presenti = sorted({(r["difficolta_ia"], r["condizione"]) for r in runs
+                       if r.get("esperimento") == esperimento},
+                      key=lambda x: (ordine_d.index(x[0]), _chiave_ordine(x[1])))
+    condizioni = sorted({c for _, c in presenti}, key=_chiave_ordine)
+    return [("tutte", c) for c in condizioni] + presenti
+
+
+def _filtra(runs: List[Dict[str, Any]], esperimento: str, difficolta: str,
+            condizione: str) -> List[Dict[str, Any]]:
+    return [r for r in runs
+            if r.get("esperimento") == esperimento
+            and r.get("condizione") == condizione
+            and (difficolta == "tutte" or r.get("difficolta_ia") == difficolta)]
+
+
+def _tabella_condizioni(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Una riga per (esperimento, difficolta, condizione, metrica)."""
+    righe: List[Dict[str, Any]] = []
+    for esperimento in sorted({r.get("esperimento", "") for r in runs}):
+        for difficolta, condizione in _gruppi(runs, esperimento):
+            gruppo = _filtra(runs, esperimento, difficolta, condizione)
+            if not gruppo:
+                continue
+            comune = {"esperimento": esperimento, "difficolta_ia": difficolta,
+                      "condizione": condizione,
+                      "rank_advisor_medio": _media_e_ic(
+                          [v for v in (_numero(r, "rank_advisor") for r in gruppo)
+                           if v is not None])["media"]}
+            # esito binario: win rate con intervallo di Wilson
+            vittorie = sum(1 for r in gruppo if r.get("esito") == ESITO_VITTORIA)
+            righe.append({**comune, "metrica": "win_rate", "unita": "%",
+                          **_proporzione_e_ic(vittorie, len(gruppo))})
+            sconfitte = sum(1 for r in gruppo if r.get("esito") == ESITO_SCONFITTA)
+            righe.append({**comune, "metrica": "tasso_sconfitte", "unita": "%",
+                          **_proporzione_e_ic(sconfitte, len(gruppo))})
+            indecise = sum(1 for r in gruppo if r.get("esito") == ESITO_NON_DECISA)
+            righe.append({**comune, "metrica": "tasso_non_decise", "unita": "%",
+                          **_proporzione_e_ic(indecise, len(gruppo))})
+            for colonna, etichetta, unita in METRICHE:
+                valori = [v for v in (_numero(r, colonna) for r in gruppo)
+                          if v is not None]
+                righe.append({**comune, "metrica": colonna, "unita": unita,
+                              **_media_e_ic(valori)})
+    return righe
+
+
+#: I confronti che la specifica chiede di mettere in evidenza.
+CONFRONTI = {
+    "E2": [("top_ranked", "worst_ranked"), ("top_ranked", "intermedia"),
+           ("intermedia", "worst_ranked")],
+    "E4": [("dottrine_on", "dottrine_off")],
+}
+
+
+def _tabella_confronti(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Differenze fra condizioni, con intervallo al 95%."""
+    righe: List[Dict[str, Any]] = []
+    for esperimento, coppie in CONFRONTI.items():
+        difficolta_presenti = ["tutte"] + _ordina_difficolta(
+            r["difficolta_ia"] for r in runs if r.get("esperimento") == esperimento)
+        for difficolta in difficolta_presenti:
+            for a, b in coppie:
+                ga = _filtra(runs, esperimento, difficolta, a)
+                gb = _filtra(runs, esperimento, difficolta, b)
+                if not ga or not gb:
+                    continue
+                comune = {"esperimento": esperimento, "difficolta_ia": difficolta,
+                          "condizione_a": a, "condizione_b": b,
+                          "n_a": len(ga), "n_b": len(gb)}
+                va = sum(1 for r in ga if r.get("esito") == ESITO_VITTORIA)
+                vb = sum(1 for r in gb if r.get("esito") == ESITO_VITTORIA)
+                diff = _differenza_proporzioni(va, len(ga), vb, len(gb))
+                if diff:
+                    righe.append({**comune, "metrica": "win_rate", "unita": "punti %",
+                                  "media_a": round(va / len(ga) * 100, 2),
+                                  "media_b": round(vb / len(gb) * 100, 2), **diff})
+                for colonna, etichetta, unita in METRICHE:
+                    xa = [v for v in (_numero(r, colonna) for r in ga) if v is not None]
+                    xb = [v for v in (_numero(r, colonna) for r in gb) if v is not None]
+                    diff = _differenza_medie(xa, xb)
+                    if diff:
+                        righe.append({**comune, "metrica": colonna, "unita": unita,
+                                      "media_a": round(sum(xa) / len(xa), 2),
+                                      "media_b": round(sum(xb) / len(xb), 2), **diff})
+    return righe
+
+
+def _tabella_scenari(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Lo stesso quadro, scenario per scenario: serve a vedere se un effetto
+    medio nasconde comportamenti opposti fra composizioni diverse."""
+    righe: List[Dict[str, Any]] = []
+    chiavi = sorted({(r.get("esperimento", ""), r.get("scenario_id", ""),
+                      r.get("condizione", "")) for r in runs},
+                    key=lambda x: (x[0], x[1], _chiave_ordine(x[2])))
+    for esperimento, scenario, condizione in chiavi:
+        gruppo = [r for r in runs if r.get("esperimento") == esperimento
+                  and r.get("scenario_id") == scenario
+                  and r.get("condizione") == condizione]
+        if not gruppo:
+            continue
+        vittorie = sum(1 for r in gruppo if r.get("esito") == ESITO_VITTORIA)
+        forza = [v for v in (_numero(r, "forza_residua_pct") for r in gruppo)
+                 if v is not None]
+        riepilogo_forza = _media_e_ic(forza)
+        righe.append({
+            "esperimento": esperimento, "scenario_id": scenario,
+            "composizione": gruppo[0].get("composizione", ""),
+            "condizione": condizione,
+            "strategia_nome": gruppo[0].get("strategia_nome", ""),
+            "n": len(gruppo),
+            "win_rate_pct": round(vittorie / len(gruppo) * 100, 2),
+            **{f"win_{k}": v for k, v in
+               _proporzione_e_ic(vittorie, len(gruppo)).items()
+               if k in ("ic95_min", "ic95_max")},
+            "forza_residua_media": riepilogo_forza["media"],
+            "forza_residua_dev_std": riepilogo_forza["dev_std"],
+            "rank_advisor": gruppo[0].get("rank_advisor", ""),
+            "compat_combat_pct": gruppo[0].get("compat_combat_pct", ""),
+            "dottrina_scontri_attiva_media": round(
+                sum((_numero(r, "dottrina_scontri_attiva") or 0) for r in gruppo)
+                / len(gruppo), 2),
+        })
+    return righe
+
+
+def _scrivi_grafici(runs: List[Dict[str, Any]], cartella: Path) -> None:
+    """I tre grafici chiesti dalla specifica: barre con errore, boxplot, linea."""
+    prodotti: List[str] = []
+
+    # 1. barre con barre d'errore: win rate per condizione e difficolta (E2)
+    e2 = [r for r in runs if r.get("esperimento") == "E2"]
+    if e2:
+        difficolta = _ordina_difficolta(r["difficolta_ia"] for r in e2)
+        condizioni = sorted({r["condizione"] for r in e2}, key=_chiave_ordine)
+        serie = []
+        for condizione in condizioni:
+            dati = []
+            for d in difficolta:
+                gruppo = _filtra(runs, "E2", d, condizione)
+                vittorie = sum(1 for r in gruppo if r.get("esito") == ESITO_VITTORIA)
+                dati.append(_proporzione_e_ic(vittorie, len(gruppo)) if gruppo else None)
+            serie.append((condizione, dati))
+        svg = grafico_barre(
+            "E2 - Tasso di vittoria per strategia scelta (IC 95%)",
+            "vittorie (%)", difficolta, serie)
+        (cartella / "grafico_e2_win_rate.svg").write_text(svg, encoding="utf-8")
+        prodotti.append("grafico_e2_win_rate.svg")
+
+        # 2. boxplot: distribuzione della forza residua per condizione
+        categorie = []
+        for condizione in condizioni:
+            gruppo = _filtra(runs, "E2", "tutte", condizione)
+            valori = [v for v in (_numero(r, "forza_residua_pct") for r in gruppo)
+                      if v is not None]
+            categorie.append((condizione, _quartili(valori)))
+        svg = grafico_box("E2 - Distribuzione della forza residua",
+                          "forza residua (%)", categorie)
+        (cartella / "grafico_e2_forza_residua.svg").write_text(svg, encoding="utf-8")
+        prodotti.append("grafico_e2_forza_residua.svg")
+
+        # 3. linea: compatibilita di combattimento -> esito
+        punti = _curva_compatibilita(e2)
+        if punti:
+            svg = grafico_linea(
+                "E2 - Compatibilita di combattimento e tasso di vittoria",
+                "compatibilita combat (%), centro della fascia",
+                "vittorie (%)", punti)
+            (cartella / "grafico_e2_compatibilita_esito.svg").write_text(svg, encoding="utf-8")
+            prodotti.append("grafico_e2_compatibilita_esito.svg")
+
+    # 4. ablation delle dottrine
+    e4 = [r for r in runs if r.get("esperimento") == "E4"]
+    if e4:
+        difficolta = _ordina_difficolta(r["difficolta_ia"] for r in e4)
+        serie = []
+        for condizione in ("dottrine_on", "dottrine_off"):
+            dati = []
+            for d in difficolta:
+                gruppo = _filtra(runs, "E4", d, condizione)
+                vittorie = sum(1 for r in gruppo if r.get("esito") == ESITO_VITTORIA)
+                dati.append(_proporzione_e_ic(vittorie, len(gruppo)) if gruppo else None)
+            serie.append((condizione, dati))
+        svg = grafico_barre("E4 - Effetto del layer dottrine (IC 95%)",
+                            "vittorie (%)", difficolta, serie)
+        (cartella / "grafico_e4_dottrine.svg").write_text(svg, encoding="utf-8")
+        prodotti.append("grafico_e4_dottrine.svg")
+
+    for nome in prodotti:
+        print(f"   scritto {_percorso_leggibile(cartella / nome)}")
+
+
+#: Ampiezza delle fasce di compatibilita, in punti percentuali.
+PASSO_FASCIA = 5.0
+
+
+def _curva_compatibilita(runs: List[Dict[str, Any]]) -> List[Tuple[float, Dict[str, Any]]]:
+    """Win rate per fascia di compatibilita di combattimento.
+
+    E' la relazione che l'esperimento vuole mettere alla prova, letta senza
+    passare dalle tre condizioni: ogni partita entra nella fascia della sua
+    compatibilita, e si guarda se il tasso di vittoria sale con essa.
+    """
+    fasce: Dict[float, List[Dict[str, Any]]] = {}
+    for riga in runs:
+        compat = _numero(riga, "compat_combat_pct")
+        if compat is None:
+            continue
+        centro = math.floor(compat / PASSO_FASCIA) * PASSO_FASCIA + PASSO_FASCIA / 2
+        fasce.setdefault(centro, []).append(riga)
+    punti = []
+    for centro in sorted(fasce):
+        gruppo = fasce[centro]
+        if len(gruppo) < 20:          # fasce troppo rade non dicono nulla
+            continue
+        vittorie = sum(1 for r in gruppo if r.get("esito") == ESITO_VITTORIA)
+        punti.append((centro, _proporzione_e_ic(vittorie, len(gruppo))))
+    return punti
+
+
+def _stampa_sintesi(condizioni: List[Dict[str, Any]],
+                    confronti: List[Dict[str, Any]]) -> None:
+    """Le due tabelle che servono davvero a colpo d'occhio."""
+    print("\nRisultati osservati (tutte le difficolta):")
+    print(f"   {'esp':<4} {'condizione':<14} {'n':>5} {'vittorie':>9} "
+          f"{'IC 95%':>16} {'forza res.':>11} {'dev.std':>8}")
+    for riga in condizioni:
+        if riga["difficolta_ia"] != "tutte" or riga["metrica"] != "win_rate":
+            continue
+        forza = next((x for x in condizioni
+                      if x["esperimento"] == riga["esperimento"]
+                      and x["difficolta_ia"] == "tutte"
+                      and x["condizione"] == riga["condizione"]
+                      and x["metrica"] == "forza_residua_pct"), {})
+        ic = f"[{riga['ic95_min']:.1f}, {riga['ic95_max']:.1f}]"
+        print(f"   {riga['esperimento']:<4} {riga['condizione']:<14} {riga['n']:>5} "
+              f"{riga['media']:>8.1f}% {ic:>16} "
+              f"{forza.get('media', 0):>10.1f}% {forza.get('dev_std', 0):>8.1f}")
+
+    print("\nConfronti (differenza A - B, intervallo al 95%):")
+    print(f"   {'esp':<4} {'A':<13} {'B':<14} {'metrica':<20} {'diff':>8} "
+          f"{'IC 95%':>18}  esclude 0")
+    for riga in confronti:
+        if riga["difficolta_ia"] != "tutte":
+            continue
+        if riga["metrica"] not in ("win_rate", "forza_residua_pct"):
+            continue
+        ic = f"[{riga['ic95_min']:.1f}, {riga['ic95_max']:.1f}]"
+        print(f"   {riga['esperimento']:<4} {riga['condizione_a']:<13} "
+              f"{riga['condizione_b']:<14} {riga['metrica']:<20} "
+              f"{riga['differenza']:>+8.1f} {ic:>18}  "
+              f"{'SI' if riga['ic95_esclude_zero'] else 'no'}")
+    print("\n   (I numeri qui sopra sono risultati osservati. "
+          "L'interpretazione va scritta a parte.)")
+
+
+# ══════════════════════════════════════════════════════════════════
 # AVVIO
 # ══════════════════════════════════════════════════════════════════
 
@@ -1166,6 +1815,9 @@ def _argomenti(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                               metavar="CARTELLA",
                               help="fonde piu' esecuzioni in --out: per ogni esperimento "
                                    "vince l'ultima cartella indicata che lo contiene")
+    analizzatore.add_argument("--analizza", action="store_true",
+                              help="aggrega i CSV gia' presenti in --out (medie, deviazioni "
+                                   "standard, win rate con IC, grafici) senza rigiocare nulla")
     return analizzatore.parse_args(argv)
 
 
@@ -1271,6 +1923,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1 if verifica_dottrine() else 0
     if args.unisci:
         return unisci_dataset(args.unisci, args.out, args.separatore)
+    if args.analizza:
+        return analizza(args.out, args.separatore)
 
     scelti = list(ESPERIMENTI) if "tutti" in args.esperimento else list(args.esperimento)
     raccolta: Dict[str, List[Dict[str, Any]]] = {"runs": [], "battles": [], "advisor": []}
