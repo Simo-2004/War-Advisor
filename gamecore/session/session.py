@@ -2164,6 +2164,18 @@ class GameSession:
                 # Basta che una delle due parti abbia artiglieria perché lo
                 # scontro suoni come un bombardamento invece che come spade.
                 "artiglieria": artiglieria_in_campo,
+                # [EXPERIMENT-LOG] Perché lo scontro è finito così: strategia,
+                # i due punteggi di compatibilità e la dottrina di ciascuna
+                # parte. Il frontend non li usa; li legge lo script batch, che
+                # altrimenti dovrebbe rifare il conto da fuori e rischiare di
+                # misurare una formula diversa da quella che ha deciso.
+                "meteo": self.weather,
+                "scontro": {
+                    lato.value: self._dettaglio_scontro(lato, legione, breakdown)
+                    for lato, legione, breakdown in (
+                        (attacker, atk_legion, atk), (defender, def_legion, dfn)
+                    )
+                },
             },
         )
 
@@ -3694,6 +3706,38 @@ class GameSession:
             "turns_before_change": doc.turns_before_change(
                 turno, legion.get("doctrine_changed_turn")
             ),
+        }
+
+    # [EXPERIMENT-LOG] Fotografia di un lato dello scontro, per il log tecnico.
+    # Non entra in nessuna formula: legge numeri che il motore ha già calcolato.
+    def _dettaglio_scontro(
+        self,
+        entity: Occupation,
+        legion: Dict[str, Any],
+        breakdown: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        strategy_id = breakdown.get("strategy_id") or self._legion_strategy_id(entity, legion)
+        dottrina = self._doctrine_payload(entity, legion, strategy_id)
+        condizione = self._legion_condition(entity, legion)
+        return {
+            "strategia": strategy_id,
+            "strategia_nome": self.strategies_map.get(strategy_id, {}).get("name", strategy_id),
+            "compat_combat": breakdown.get("combat_compatibility"),
+            "compat_advisor": breakdown.get("advisory_score"),
+            "fattore_strategia": breakdown.get("strategy_factor"),
+            "unita": len(legion.get("units") or []),
+            "stato_truppe": tc.resolve_status(condizione),
+            "morale": condizione.get("morale"),
+            "fatica": condizione.get("fatigue"),
+            "fortificazione": breakdown.get("fortification_level"),
+            "presidio": breakdown.get("garrison_strength"),
+            "bonus_difesa": breakdown.get("defense_bonus"),
+            "fattore_marcia": breakdown.get("movement_factor"),
+            # [DOCTRINE-LAYER] Quale effetto è acceso, e se non lo è cosa manca.
+            "dottrina_attiva": bool(dottrina and dottrina.get("active")),
+            "dottrina_effetto": (dottrina or {}).get("effect_text"),
+            "dottrina_requisito_ok": (dottrina or {}).get("gate_ok"),
+            "dottrina_dal_turno": (dottrina or {}).get("since_turn"),
         }
 
     def _legion_strategy_id(self, entity: Occupation, legion: Dict[str, Any]) -> str:
