@@ -63,6 +63,14 @@ try:
 except ImportError:                                           # layer rimosso
     balance = None
 
+# [COMPAT-LAYER] Quanto l'affinità unità-ambiente pesa nella compatibilità che
+# entra nel moltiplicatore di forza. Se il file sparisce si torna alla distanza
+# euclidea pura, cioè al comportamento di prima del layer.
+try:
+    from gamecore import combat_compat as cmp_layer
+except ImportError:                                           # layer rimosso
+    cmp_layer = None
+
 try:
     from debug.strength_debug import log_strength_debug
 except Exception:
@@ -286,6 +294,9 @@ class GameSession:
         # Mappa
         map_seed: Optional[int] = None,
         ai_difficulty: str = AI_EASY_ID,
+        # [SETUP-RULE] Il meteo con cui il giocatore ha SIMULATO. Solo memoria:
+        # `weather` resta la condizione vera dello scontro.
+        simulated_weather: Optional[str] = None,
     ) -> None:
         # Mappa meteo arricchita con le combinazioni ciclo × meteo. È una copia:
         # registrarle nel dizionario globale le farebbe comparire nel selettore
@@ -297,12 +308,27 @@ class GameSession:
         self.player_home_terrain = player_home_terrain
         self.ai_home_terrain = "Montagna"
 
+        # [SETUP-RULE] Terreno, meteo e stato truppe della schermata iniziale
+        # sono parametri di SIMULAZIONE: servono a provare uno scenario, non a
+        # sceglierne uno vantaggioso per la partita vera. Scendendo in campo
+        # con le condizioni scelte un giocatore poteva regalarsi fino al 75% di
+        # forza in più (misurato su 3 assassini in foresta). Qui restano come
+        # documentazione di ciò che è stato simulato; le condizioni vere le
+        # impone la partita.
+        self.simulation_setup: Dict[str, Any] = {
+            "terrain": player_home_terrain,
+            "weather": simulated_weather if simulated_weather is not None else weather,
+            "troop_status": player_troop_status,
+        }
+
         # --- Giocatore ---
         self.player_units         = player_units
         self.player_strategy_id   = player_strategy_id
         self.player_army          = player_army
         self.player_modified      = player_modified
-        self.player_troop_status  = player_troop_status
+        # [SETUP-RULE] Si parte sempre da truppe fresche, come l'IA: un reparto
+        # che non ha ancora marciato non può essere veterano né demoralizzato.
+        self.player_troop_status  = tc.STATUS_FRESH
         self.player_army_cost     = player_army_cost
 
         # --- IA ---
@@ -311,16 +337,16 @@ class GameSession:
         self.ai_strategy_name = ai_data["strategy"]["name"]
         self.ai_army          = ai_data["army_vector"]
         self.ai_modified      = ai_data["modified_vector"]
-        self.ai_troop_status  = ai_data["troop_status"]
+        self.ai_troop_status  = tc.STATUS_FRESH      # [SETUP-RULE] come il giocatore
         self.ai_army_cost     = ai_data.get("army_cost", 0)
 
         # Condizione della riserva nel castello. Le legioni la ereditano alla
         # nascita e ci rifondono la propria quando vengono richiamate: senza,
         # richiamare e riformare una legione sarebbe un azzeramento gratuito
-        # della stanchezza. Parte dallo stato scelto nella schermata iniziale,
-        # così quella scelta continua a contare anche in partita.
+        # della stanchezza. [SETUP-RULE] Entrambi partono da fresche: fatica e
+        # morale si guadagnano in campo, non si scelgono a tavolino.
         self.reserve_condition: Dict[Occupation, Dict[str, Any]] = {
-            PLAYER: tc.new_condition(player_troop_status),
+            PLAYER: tc.new_condition(self.player_troop_status),
             AI: tc.new_condition(self.ai_troop_status),
         }
 
@@ -349,6 +375,22 @@ class GameSession:
 
         # --- Mappa ---
         self.game_map: GameMap = GameMap(seed=map_seed)
+
+        # [SETUP-RULE] Il terreno di casa è quello della cella su cui sorge il
+        # castello, non quello scelto nel simulatore: è dove la riserva aspetta
+        # davvero. Il vettore modificato va rifatto sulle condizioni vere,
+        # altrimenti il pannello mostrerebbe ancora i numeri della simulazione.
+        castello = self.game_map.castle_positions.get(PLAYER)
+        cella_castello = self.game_map.get_cell(*castello) if castello else None
+        if cella_castello is not None:
+            self.player_home_terrain = cella_castello.terrain
+        self.player_modified, _ = apply_modifiers(
+            army_vector=self.player_army,
+            terrain_name=self.player_home_terrain,
+            weather_name=self.weather,
+            troop_status_name=self.player_troop_status,
+            modifiers_data=self.data,
+        )
 
         # --- Stato ---
         self.state:      SessionState  = SessionState.ACTIVE
@@ -1846,9 +1888,13 @@ class GameSession:
             troop_status_name=troop_status,
             modifiers_data=self.data,
         )
-        strategy_factor = self._strategy_factor(
-            entity, terrain, modified, self._legion_strategy_id(entity, legion)
+        # [COMPAT-LAYER] `unit_ids` è la composizione di questa legione: serve
+        # all'affinità unità-ambiente, che senza di essa non può entrare.
+        strategy_id = self._legion_strategy_id(entity, legion)
+        punteggi = self._strategy_scores(
+            entity, modified, strategy_id, terrain=terrain, unit_ids=unit_ids
         )
+        strategy_factor = self._factor_from_compatibility(punteggi["combat_compatibility"])
         context_factor = max(0.75, min(1.25, (sum(modified.values()) / 4.6)))
 
         strength = (base_total + stack_bonus) * strategy_factor * context_factor
@@ -1900,6 +1946,12 @@ class GameSession:
             "strategy_factor": strategy_factor,
             "defense_bonus": defense_bonus,
             "movement_factor": movement_factor,
+            # [COMPAT-LAYER] Entrambi i punteggi, perché il log sperimentale
+            # deve poter confrontare ciò che l'Advisor consiglia con ciò che la
+            # battaglia premia davvero.
+            "strategy_id": strategy_id,
+            "combat_compatibility": punteggi["combat_compatibility"],
+            "advisory_score": punteggi["advisory_score"],
         }
 
     def _apply_legion_losses(
@@ -2112,6 +2164,18 @@ class GameSession:
                 # Basta che una delle due parti abbia artiglieria perché lo
                 # scontro suoni come un bombardamento invece che come spade.
                 "artiglieria": artiglieria_in_campo,
+                # [EXPERIMENT-LOG] Perché lo scontro è finito così: strategia,
+                # i due punteggi di compatibilità e la dottrina di ciascuna
+                # parte. Il frontend non li usa; li legge lo script batch, che
+                # altrimenti dovrebbe rifare il conto da fuori e rischiare di
+                # misurare una formula diversa da quella che ha deciso.
+                "meteo": self.weather,
+                "scontro": {
+                    lato.value: self._dettaglio_scontro(lato, legione, breakdown)
+                    for lato, legione, breakdown in (
+                        (attacker, atk_legion, atk), (defender, def_legion, dfn)
+                    )
+                },
             },
         )
 
@@ -2548,14 +2612,17 @@ class GameSession:
         pos = tuple(legion.get("pos", ()))
         cella = self.game_map.get_cell(*pos) if len(pos) == 2 else None
         terreno = cella.terrain if cella is not None else self.ai_home_terrain
+        unita = list(legion.get("units") or [])
         modificato, _ = apply_modifiers(
-            army_vector=aggregate_army(legion.get("units") or [], self.data["units"]),
+            army_vector=aggregate_army(unita, self.data["units"]),
             terrain_name=terreno,
             weather_name=self.weather,
             troop_status_name=self._legion_troop_status(AI, legion),
             modifiers_data=self.data,
         )
-        return [self._strategy_factor(AI, terreno, modificato, sid) for sid in candidate]
+        return [
+            self._strategy_factor(AI, terreno, modificato, sid, unita) for sid in candidate
+        ]
 
     def _update_ai_legion_doctrines(self, logs: List[str]) -> None:
         """Ogni legione IA sceglie la propria dottrina, con l'attrito di tutti.
@@ -2727,7 +2794,11 @@ class GameSession:
             return default
 
     def _ai_marginal_strategy_gain(
-        self, attrs: Dict[str, float], terrain: str, compat_base: Optional[float]
+        self,
+        attrs: Dict[str, float],
+        terrain: str,
+        compat_base: Optional[float],
+        unit_id: Optional[str] = None,
     ) -> Optional[float]:
         """Di quanto questa truppa avvicina l'esercito IA alla sua strategia.
 
@@ -2750,7 +2821,12 @@ class GameSession:
             troop_status_name=self.ai_troop_status,
             modifiers_data=self.data,
         )
-        return self._strategy_compatibility(AI, modificato) - compat_base
+        # [COMPAT-LAYER] L'esercito ipotetico comprende la recluta: il confronto
+        # con `compat_base` deve usare la stessa formula su entrambi i lati.
+        ipotetico = list(self.ai_units) + ([unit_id] if unit_id else [])
+        return self._strategy_compatibility(
+            AI, modificato, terrain=terrain, unit_ids=ipotetico
+        ) - compat_base
 
     def _scegli_recluta_ia(self, candidate: List[Dict[str, Any]]) -> Optional[str]:
         """Quale truppa arruola l'IA fra quelle che può permettersi.
@@ -2783,10 +2859,14 @@ class GameSession:
                 troop_status_name=self.ai_troop_status,
                 modifiers_data=self.data,
             )
-            compat_base = self._strategy_compatibility(AI, base_mod)
+            compat_base = self._strategy_compatibility(
+                AI, base_mod, terrain=terreno, unit_ids=self.ai_units
+            )
 
         guadagni = [
-            self._ai_marginal_strategy_gain(unit["attributes"], terreno, compat_base)
+            self._ai_marginal_strategy_gain(
+                unit["attributes"], terreno, compat_base, unit["id"]
+            )
             for unit in candidate
         ]
         validi = [g for g in guadagni if g is not None]
@@ -3322,14 +3402,22 @@ class GameSession:
         terrain: str,
         modified_vector: Dict[str, float],
         strategy_id: Optional[str] = None,
+        unit_ids: Optional[Sequence[str]] = None,
     ) -> float:
         """Fattore tattico legato alla qualità della manovra scelta rispetto all'esercito corrente."""
-        compatibility = self._strategy_compatibility(entity, modified_vector, strategy_id)
+        return self._factor_from_compatibility(
+            self._strategy_compatibility(
+                entity, modified_vector, strategy_id, terrain=terrain, unit_ids=unit_ids
+            )
+        )
 
-        # Impatto strategico intenzionalmente forte:
-        # - strategia affine => moltiplicatore molto alto
-        # - strategia disallineata => malus severo
-        # - soglie critiche per premiare/penalizzare scelte estreme
+    def _factor_from_compatibility(self, compatibility: float) -> float:
+        """La curva che trasforma la compatibilità nel moltiplicatore di forza.
+
+        Impatto strategico intenzionalmente forte: strategia affine =>
+        moltiplicatore molto alto, strategia disallineata => malus severo, con
+        soglie critiche che premiano o puniscono le scelte estreme.
+        """
         base_factor = 0.38 + ((compatibility ** 2.6) * 1.92)
 
         critical_bonus = 0.0
@@ -3347,25 +3435,68 @@ class GameSession:
         factor = base_factor + critical_bonus - critical_malus
         return max(0.30, min(2.35, factor))
 
-    def _strategy_compatibility(
+    def _strategy_scores(
         self,
         entity: Occupation,
         modified_vector: Dict[str, float],
         strategy_id: Optional[str] = None,
-    ) -> float:
-        """Compatibilità [0..1] tra esercito modificato e strategia.
+        *,
+        terrain: Optional[str] = None,
+        unit_ids: Optional[Sequence[str]] = None,
+    ) -> Dict[str, Any]:
+        """I due punteggi di compatibilità [0..1] fra esercito modificato e strategia.
 
-        `strategy_id` permette di valutare la strategia di una singola legione
-        invece di quella globale dello schieramento.
+        `combat_compatibility` è quello che entra nel moltiplicatore di forza,
+        `advisory_score` quello che l'Advisor mostra al giocatore. Differiscono
+        solo per il peso dell'affinità unità-ambiente: a peso 1.0 coincidono.
+
+        [COMPAT-LAYER] Senza il layer, o senza `unit_ids`, sono entrambi la
+        distanza euclidea pura di sempre.
         """
         if strategy_id is None:
             strategy_id = self.player_strategy_id if entity == PLAYER else self.ai_strategy_id
         strategy = next((s for s in self.data["strategies"] if s["id"] == strategy_id), None)
         if strategy is None:
-            return 0.5
+            return {"combat_compatibility": 0.5, "advisory_score": 0.5,
+                    "strategy_id": strategy_id, "distance": None}
 
         distance = euclidean_distance(modified_vector, strategy["ideal_attributes"])
-        return max(0.0, min(1.0, 1.0 - (distance / (8 ** 0.5))))
+        grezza = max(0.0, min(1.0, 1.0 - (distance / (8 ** 0.5))))
+
+        combat, advisory = grezza, grezza
+        if cmp_layer is not None and unit_ids:
+            combat, advisory = cmp_layer.scores(
+                distance=distance,
+                unit_ids=unit_ids,
+                strategy_id=strategy_id,
+                terrain=terrain,
+                weather=self.weather,
+                affinities=self.data.get("unit_affinities", {}),
+            )
+        return {
+            "combat_compatibility": combat,
+            "advisory_score": advisory,
+            "strategy_id": strategy_id,
+            "distance": distance,
+        }
+
+    def _strategy_compatibility(
+        self,
+        entity: Occupation,
+        modified_vector: Dict[str, float],
+        strategy_id: Optional[str] = None,
+        *,
+        terrain: Optional[str] = None,
+        unit_ids: Optional[Sequence[str]] = None,
+    ) -> float:
+        """Compatibilità di combattimento [0..1] tra esercito modificato e strategia.
+
+        `strategy_id` permette di valutare la strategia di una singola legione
+        invece di quella globale dello schieramento.
+        """
+        return self._strategy_scores(
+            entity, modified_vector, strategy_id, terrain=terrain, unit_ids=unit_ids
+        )["combat_compatibility"]
 
     def _current_army_terrain(self, entity: Occupation) -> str:
         """Terreno di riferimento della riserva: quello scelto allo schieramento.
@@ -3575,6 +3706,38 @@ class GameSession:
             "turns_before_change": doc.turns_before_change(
                 turno, legion.get("doctrine_changed_turn")
             ),
+        }
+
+    # [EXPERIMENT-LOG] Fotografia di un lato dello scontro, per il log tecnico.
+    # Non entra in nessuna formula: legge numeri che il motore ha già calcolato.
+    def _dettaglio_scontro(
+        self,
+        entity: Occupation,
+        legion: Dict[str, Any],
+        breakdown: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        strategy_id = breakdown.get("strategy_id") or self._legion_strategy_id(entity, legion)
+        dottrina = self._doctrine_payload(entity, legion, strategy_id)
+        condizione = self._legion_condition(entity, legion)
+        return {
+            "strategia": strategy_id,
+            "strategia_nome": self.strategies_map.get(strategy_id, {}).get("name", strategy_id),
+            "compat_combat": breakdown.get("combat_compatibility"),
+            "compat_advisor": breakdown.get("advisory_score"),
+            "fattore_strategia": breakdown.get("strategy_factor"),
+            "unita": len(legion.get("units") or []),
+            "stato_truppe": tc.resolve_status(condizione),
+            "morale": condizione.get("morale"),
+            "fatica": condizione.get("fatigue"),
+            "fortificazione": breakdown.get("fortification_level"),
+            "presidio": breakdown.get("garrison_strength"),
+            "bonus_difesa": breakdown.get("defense_bonus"),
+            "fattore_marcia": breakdown.get("movement_factor"),
+            # [DOCTRINE-LAYER] Quale effetto è acceso, e se non lo è cosa manca.
+            "dottrina_attiva": bool(dottrina and dottrina.get("active")),
+            "dottrina_effetto": (dottrina or {}).get("effect_text"),
+            "dottrina_requisito_ok": (dottrina or {}).get("gate_ok"),
+            "dottrina_dal_turno": (dottrina or {}).get("since_turn"),
         }
 
     def _legion_strategy_id(self, entity: Occupation, legion: Dict[str, Any]) -> str:
@@ -3957,6 +4120,10 @@ class GameSession:
             ),
             "current_strength": int(round(breakdown["strength"])),
             "current_strategy_factor": round(breakdown["strategy_factor"], 3),
+            # [COMPAT-LAYER] I due punteggi della strategia in uso, affiancati:
+            # il log sperimentale li legge da qui senza rifare il conto.
+            "current_combat_compatibility": round(breakdown["combat_compatibility"], 4),
+            "current_advisory_score": round(breakdown["advisory_score"], 4),
             "troop_status_name": troop_status,
             "troop_condition": tc.describe(condition),
             "empty": False,
@@ -5390,8 +5557,12 @@ class GameSession:
             stack_bonus_total += stack_bonus
             total_legions += count
 
-        strategy_compatibility = self._strategy_compatibility(entity, modified)
-        strategy_factor = self._strategy_factor(entity, terrain, modified)
+        # [COMPAT-LAYER] Il breakdown porta entrambi i punteggi: è la finestra
+        # da cui si legge la distanza fra consiglio e battaglia.
+        esercito = list(self.player_units if entity == PLAYER else self.ai_units)
+        punteggi = self._strategy_scores(entity, modified, terrain=terrain, unit_ids=esercito)
+        strategy_compatibility = punteggi["combat_compatibility"]
+        strategy_factor = self._factor_from_compatibility(strategy_compatibility)
         detached = self.game_map.count_garrisons(entity)
         detach_penalty = max(0.7, 1.0 - (max(0, detached) * 0.06))
 
@@ -5413,6 +5584,11 @@ class GameSession:
             "detach_penalty": round(detach_penalty, 4),
             "strategy_factor": round(strategy_factor, 4),
             "strategy_compatibility": round(strategy_compatibility, 4),
+            # [COMPAT-LAYER] Nomi espliciti, come chiede la specifica: quello
+            # che la battaglia usa e quello che l'Advisor mostra.
+            "combat_compatibility": round(punteggi["combat_compatibility"], 4),
+            "advisory_score": round(punteggi["advisory_score"], 4),
+            "compat_calibration": cmp_layer.describe() if cmp_layer is not None else None,
             "context_factor": round(context_factor, 4),
             "base_strength": round(base_strength, 4),
             "effective_strength": int(round(effective_strength)),
@@ -5433,6 +5609,16 @@ class GameSession:
             # Stato ambientale completo per l'indicatore: i due assi separati,
             # emoji, colori, effetti in chiaro e quanti turni mancano al cambio.
             "weather_state": self.weather_state(),
+            # [SETUP-RULE] Cosa è stato simulato e cosa vale davvero in campo.
+            # Il frontend lo usa per non promettere condizioni che non avrà, il
+            # log sperimentale per distinguere le due cose.
+            "simulation_setup": self.simulation_setup,
+            "battle_conditions": {
+                "weather": self.weather,
+                "troop_status": self.player_troop_status,
+                "home_terrain": self.player_home_terrain,
+                "chosen_by_player": False,
+            },
             "player": {
                 "units":         self.player_units,
                 "strategy_id":   self.player_strategy_id,

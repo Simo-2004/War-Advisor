@@ -220,6 +220,58 @@ def build_combined_weather_map(weather_config: Dict[str, Any]) -> Dict[str, Any]
     return combined
 
 
+def _merge_affinity(base: float, extra: float) -> float:
+    """Somma due affinità in [0..1] con 0.5 come neutro.
+
+    Stessa logica di `_merge_modifiers`: le condizioni si compongono invece di
+    diluirsi, quindi si sommano gli scostamenti dal neutro. Notte + Nebbia per
+    un assassino resta vicino al massimo; Notte + Sereno resta favorevole
+    perché la notte pesa più del cielo sereno.
+    """
+    deviazione = (base - 0.5) + (extra - 0.5)
+    return max(0.0, min(1.0, 0.5 + deviazione))
+
+
+def build_combined_affinity_map(
+    weather_affinity: Dict[str, Any], default: float = 0.5
+) -> Dict[str, float]:
+    """Affinità delle voci composte, dedotte da quelle dei due assi singoli.
+
+    Serve perché `unit_affinities.json` elenca solo le quattro condizioni
+    semplici: in partita la chiave meteo è composta ("Notte · Sereno") e la
+    ricerca cadeva sul neutro, azzerando di fatto l'asse meteo dell'affinità.
+    """
+    combinate: Dict[str, float] = {}
+    for cycle in CYCLES:
+        # Giorno non ha una voce propria: è l'assenza di notte, quindi neutro.
+        quota_ciclo = default if cycle == CYCLE_DAY else float(
+            weather_affinity.get(cycle, default)
+        )
+        for weather in WEATHERS:
+            quota_meteo = float(weather_affinity.get(weather, default))
+            combinate[combined_key(cycle, weather)] = _merge_affinity(
+                quota_ciclo, quota_meteo
+            )
+    return combinate
+
+
+def affinities_with_combined_weather(affinities: Dict[str, Any]) -> Dict[str, Any]:
+    """Copia delle affinità con le chiavi meteo composte già risolte."""
+    if not affinities:
+        return affinities
+    default = float(affinities.get("default_affinity", 0.5))
+    ambiente = affinities.get("environment_affinity") or {}
+    nuovo_ambiente: Dict[str, Any] = {}
+    for unit_id, voce in ambiente.items():
+        if not isinstance(voce, dict) or "weather" not in voce:
+            nuovo_ambiente[unit_id] = voce
+            continue
+        meteo = dict(voce["weather"])
+        meteo.update(build_combined_affinity_map(meteo, default))
+        nuovo_ambiente[unit_id] = {**voce, "weather": meteo}
+    return {**affinities, "environment_affinity": nuovo_ambiente}
+
+
 def data_with_combined_weather(data: Dict[str, Any]) -> Dict[str, Any]:
     """Copia dei dati con le voci composte aggiunte alla mappa meteo.
 
@@ -228,7 +280,15 @@ def data_with_combined_weather(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     weather_config = dict(data.get("weather", {}))
     weather_config.update(build_combined_weather_map(weather_config))
-    return {**data, "weather": weather_config}
+    return {
+        **data,
+        "weather": weather_config,
+        # Le affinità vanno composte sullo stesso asse, altrimenti in partita
+        # leggono una chiave che non esiste e tornano neutre.
+        "unit_affinities": affinities_with_combined_weather(
+            data.get("unit_affinities") or {}
+        ),
+    }
 
 
 def roll_weather(rng: random.Random, exclude: Optional[str] = None) -> str:
@@ -240,6 +300,19 @@ def roll_weather(rng: random.Random, exclude: Optional[str] = None) -> str:
 
 def next_change_delay(rng: random.Random) -> int:
     return rng.randint(CHANGE_MIN_TURNS, CHANGE_MAX_TURNS)
+
+
+def initial_conditions(rng: random.Random) -> Tuple[str, str]:
+    """[SETUP-RULE] Condizioni meteo di inizio partita: sorteggiate, mai scelte.
+
+    La schermata iniziale è un simulatore — ci si prova qualunque scenario —
+    ma il meteo con cui si scende in campo non è una scelta del giocatore,
+    altrimenti basterebbe selezionare la condizione che più favorisce il
+    proprio esercito. L'estrazione passa dall'RNG della partita, quindi a
+    parità di seed la partita resta riproducibile.
+    """
+    cycle = rng.choice(CYCLES)
+    return cycle, roll_weather(rng)
 
 
 def advance(cycle: str, weather: str, rng: random.Random) -> Tuple[str, str]:
