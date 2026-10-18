@@ -1187,6 +1187,18 @@ def _lettura(testo: str) -> str:
     return f"*Lettura.* {testo[:1].upper()}{testo[1:]}"
 
 
+def _provenienza_testo(manifest: Dict[str, Any]) -> str:
+    """Commit e stato del codice, esattamente come li registra il manifest."""
+    commit = str(manifest.get("commit", "n.d."))[:7]
+    prov = manifest.get("provenienza_codice") or {}
+    if not prov:
+        return f"commit `{commit}`, provenienza del codice non registrata"
+    if prov.get("codice_identico_al_commit"):
+        return f"commit `{commit}`, codice identico al commit"
+    return (f"commit `{commit}` con modifiche non committate a "
+            + ", ".join(prov.get("file_modificati_non_committati", [])))
+
+
 def identita_fra_condizioni(runs: pd.DataFrame) -> Dict[str, Any]:
     """Dentro un dataset: le partite con lo stesso seed sono identiche fra condizioni?
 
@@ -1342,13 +1354,15 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
         w("- Provenienza del codice: il commit registrato non contiene ancora "
           "`scripts/csv_batch_test.py`; la campagna è stata generata da codice non ancora "
           "committato, e il manifest di allora non lo segnalava.")
+    for nome, controllo, _ in controlli:
+        w(f"- Dataset di controllo `{nome}`: generato il {controllo.manifest.get('generato', 'n.d.')}; "
+          f"{_provenienza_testo(controllo.manifest)}")
     for nome, controllo, _, turni_c in controlli_turni:
         verifica = verifica_riproducibilita(runs, controllo.runs)
         if not verifica:
             continue
-        commit_c = str(controllo.manifest.get("commit", "n.d."))[:7]
-        w(f"- Riproducibilità verificata sui dati: il dataset `{nome}`, generato con il codice "
-          f"del commit `{commit_c}` e con gli stessi seed, contiene "
+        w(f"- Riproducibilità verificata sui dati: il dataset `{nome}` "
+          f"({_provenienza_testo(controllo.manifest)}), con gli stessi seed, contiene "
           f"{verifica['partite_confrontate']} partite che nella campagna si erano decise entro "
           f"{turni_p} turni; **{verifica['partite_identiche']} su "
           f"{verifica['partite_confrontate']} sono identiche** in tutte le colonne confrontate "
