@@ -69,13 +69,16 @@ USO
   python scripts/csv_batch_test.py --verifica      # requisiti e cooldown dottrine
   python scripts/csv_batch_test.py --analizza      # sintesi e grafici dei dati gia' prodotti
 
-I due dataset di controllo chiesti dal relatore, con gli stessi seed della
-campagna (un comando per riga):
+I dataset di controllo, con gli stessi seed della campagna (un comando per
+riga): i primi due chiesti dal relatore, il terzo e' il controllo di
+circolarita' di E2 (moltiplicatore della strategia del giocatore fisso a 1).
 
   --esperimento E2 --repliche 30 --difficolta easy normal hard
       --combat-affinity-weight 0 --out reports/esperimenti_controllo_affinita0
   --esperimento E2 --repliche 10 --turni 800 --difficolta easy normal hard
       --out reports/esperimenti_sensibilita_turni800
+  --esperimento E2 --repliche 30 --difficolta easy normal hard
+      --moltiplicatore-giocatore 1 --out reports/esperimenti_controllo_moltiplicatore1
 
 Rifare un solo esperimento senza rieseguire tutto, e poi ricomporre il dataset:
 
@@ -1266,6 +1269,7 @@ def scrivi_manifest(args: argparse.Namespace, conteggi: Dict[str, int],
             "difficolta": list(args.difficolta),
             "scenari": args.scenari or [s["id"] for s in SCENARI],
             "combat_affinity_weight": args.combat_affinity_weight,
+            "moltiplicatore_giocatore": args.moltiplicatore_giocatore,
         },
         "taratura": {
             "compat_layer": cmp_layer.describe() if cmp_layer else None,
@@ -1342,6 +1346,11 @@ def _argomenti(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--combat-affinity-weight", type=float, default=None, metavar="PESO",
         help="peso dell'affinita' unita'-ambiente nel combattimento (default: quello "
              "del layer, 0.25). 0 = compatibilita' di combattimento euclidea pura")
+    analizzatore.add_argument(
+        "--moltiplicatore-giocatore", type=float, default=None, metavar="FATTORE",
+        help="controllo di circolarita': il moltiplicatore di forza della strategia del "
+             "giocatore vale FATTORE qualunque strategia scelga (1 = neutro); quello "
+             "dell'IA non cambia. Default: nessun intervento")
     analizzatore.add_argument("--turni", type=int, default=TURNI_DEFAULT,
                               help=f"tetto di turni per partita (default: {TURNI_DEFAULT})")
     analizzatore.add_argument("--difficolta", nargs="+", default=["normal"],
@@ -1460,6 +1469,40 @@ def _elenca_scenari() -> None:
         print()
 
 
+def fissa_moltiplicatore_giocatore(fattore: float) -> None:
+    """[EXPERIMENT-LOG] Controllo di circolarita' di E2.
+
+    La classifica dell'advisor e il moltiplicatore di forza nascono dalla stessa
+    distanza euclidea: in E2 la strategia in testa vince anche perche' il motore
+    le da' un moltiplicatore piu' alto. Qui il moltiplicatore del giocatore vale
+    `fattore` per qualunque strategia; quello dell'IA resta com'e'. Se il
+    gradiente fra le condizioni resta, viene da cio' che la strategia fa oltre
+    al moltiplicatore (le dottrine); se sparisce, E2 misura solo la coerenza fra
+    advisor e motore.
+
+    Il codice di gioco non cambia: si avvolgono due metodi di GameSession, e
+    solo in questo processo. Nel motore ogni chiamata a
+    `_factor_from_compatibility` segue quella a `_strategy_scores` per lo stesso
+    schieramento, quindi basta ricordare per chi sono stati appena calcolati i
+    punteggi. La colonna `pl_fattore_strategia` di battles.csv lo dimostra.
+    """
+    from gamecore.session.session import GameSession as classe
+    punteggi_originali = classe._strategy_scores
+    fattore_originale = classe._factor_from_compatibility
+
+    def punteggi(self, entity, *argomenti, **opzioni):
+        self._schieramento_valutato = entity
+        return punteggi_originali(self, entity, *argomenti, **opzioni)
+
+    def fattore_da_compatibilita(self, compatibilita):
+        if getattr(self, "_schieramento_valutato", None) == PLAYER:
+            return fattore
+        return fattore_originale(self, compatibilita)
+
+    classe._strategy_scores = punteggi
+    classe._factor_from_compatibility = fattore_da_compatibilita
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _argomenti(argv)
     # [COMPAT-LAYER] Il peso si imposta prima di qualunque partita, e nel
@@ -1478,8 +1521,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return unisci_dataset(args.unisci, args.out, args.separatore)
     if args.analizza:
         return analizza(args.out, args.separatore)
+    if args.moltiplicatore_giocatore is not None:
+        fissa_moltiplicatore_giocatore(args.moltiplicatore_giocatore)
 
-    scelti = list(ESPERIMENTI) if "tutti" in args.esperimento else list(args.esperimento)
+    scelti =list(ESPERIMENTI) if "tutti" in args.esperimento else list(args.esperimento)
     raccolta: Dict[str, List[Dict[str, Any]]] = {"runs": [], "battles": [], "advisor": []}
 
     inizio = datetime.now()
