@@ -772,18 +772,20 @@ def tabella_e3(advisor: pd.DataFrame) -> pd.DataFrame:
 
 
 def tabella_controllo(principale: pd.DataFrame, controllo: pd.DataFrame,
-                      ctx: SimpleNamespace) -> pd.DataFrame:
+                      ctx: SimpleNamespace,
+                      moltiplicatore_fisso: Optional[float] = None) -> pd.DataFrame:
     """Confronto partita per partita fra il dataset principale e uno di controllo.
 
     Le partite si accoppiano per scenario, livello, condizione e replica, e si
     verifica che il seed sia lo stesso: le uniche differenze ammesse sono quelle
-    dichiarate nei due manifest.
+    dichiarate nei due manifest. Se il controllo ha fissato il moltiplicatore
+    del giocatore, il moltiplicatore effettivo e' quello, non la curva.
     """
     chiave = ["scenario_id", "difficolta_ia", "condizione", "replica"]
     p = principale[principale["esperimento"] == "E2"]
     c = controllo[controllo["esperimento"] == "E2"]
     colonne = chiave + ["seed", "esito", "vinta", "indecisa", "compat_combat_pct",
-                        "forza_residua_pct", "rapporto_scambi"]
+                        "forza_residua_pct", "rapporto_scambi", "dottrina_scontri_attiva"]
     unite = p[colonne].merge(c[colonne], on=chiave, suffixes=("_p", "_c"))
     diversi = (unite["seed_p"] != unite["seed_c"]).sum()
     if diversi:
@@ -806,8 +808,12 @@ def tabella_controllo(principale: pd.DataFrame, controllo: pd.DataFrame,
                 "forza_residua_controllo": x["forza_residua_pct_c"].mean(),
                 "compat_combat_media_principale": cp, "compat_combat_media_controllo": cc,
                 "fattore_medio_principale": float(np.mean([ctx.fattore(v / 100) for v in x["compat_combat_pct_p"]])),
-                "fattore_medio_controllo": float(np.mean([ctx.fattore(v / 100) for v in x["compat_combat_pct_c"]])),
-                "esiti_identici": int((x["esito_p"] == x["esito_c"]).sum()),
+                "fattore_medio_controllo": (
+                    float(moltiplicatore_fisso) if moltiplicatore_fisso is not None
+                    else float(np.mean([ctx.fattore(v / 100) for v in x["compat_combat_pct_c"]]))),
+                "dottrina_attiva_principale": x["dottrina_scontri_attiva_p"].mean(),
+                "dottrina_attiva_controllo": x["dottrina_scontri_attiva_c"].mean(),
+                "esiti_identici":int((x["esito_p"] == x["esito_c"]).sum()),
                 "da_non_decisa_a_vittoria": int(((x["esito_p"] == "non_decisa") & (x["esito_c"] == "vittoria")).sum()),
                 "da_non_decisa_a_sconfitta": int(((x["esito_p"] == "non_decisa") & (x["esito_c"] == "sconfitta")).sum()),
                 "altri_cambi": int(((x["esito_p"] != x["esito_c"]) & (x["esito_p"] != "non_decisa")).sum()),
@@ -820,16 +826,26 @@ def tabella_controllo(principale: pd.DataFrame, controllo: pd.DataFrame,
             continue
         mp = mcnemar(accoppiate["vinta_p_t"], accoppiate["vinta_p_w"])
         mc = mcnemar(accoppiate["vinta_c_t"], accoppiate["vinta_c_w"])
-        righe.append({
+        riga = {
             "livello": livello, "condizione": "differenza più affine meno affine",
             "n": mp["n_coppie"],
             "win_rate_principale": mp["diff_appaiata_pct"], "win_rate_controllo": mc["diff_appaiata_pct"],
-            "ic95_principale": f"[{mp['ic95_min']:.1f}; {mp['ic95_max']:.1f}]",
-            "ic95_controllo": f"[{mc['ic95_min']:.1f}; {mc['ic95_max']:.1f}]",
+            "ic95_min_principale": mp["ic95_min"], "ic95_max_principale": mp["ic95_max"],
+            "ic95_min_controllo": mc["ic95_min"], "ic95_max_controllo": mc["ic95_max"],
             "coppie_discordanti_principale": f"{mp['solo_a_vince']} contro {mp['solo_b_vince']}",
             "coppie_discordanti_controllo": f"{mc['solo_a_vince']} contro {mc['solo_b_vince']}",
             "p_mcnemar_principale": mp["p_value_esatto"], "p_mcnemar_controllo": mc["p_value_esatto"],
-        })
+        }
+        # la stessa differenza con lo scenario come unita', in ciascun dataset
+        for suffisso, nome in (("p", "principale"), ("c", "controllo")):
+            medie = g.groupby(["scenario_id", "condizione"])[f"vinta_{suffisso}"].mean().unstack() * 100
+            delta = medie["top_ranked"] - medie["worst_ranked"]
+            r = t_un_campione(delta)
+            riga.update({f"scenari_positivi_{nome}": int((delta > 1e-9).sum()),
+                         f"scenari_negativi_{nome}": int((delta < -1e-9).sum()),
+                         f"n_scenari_{nome}": r["n"], f"t_scenari_{nome}": r["t"],
+                         f"p_scenari_{nome}": r["p_value"]})
+        righe.append(riga)
     return pd.DataFrame(righe)
 
 
@@ -1171,6 +1187,103 @@ def _lettura(testo: str) -> str:
     return f"*Lettura.* {testo[:1].upper()}{testo[1:]}"
 
 
+def identita_fra_condizioni(runs: pd.DataFrame) -> Dict[str, Any]:
+    """Dentro un dataset: le partite con lo stesso seed sono identiche fra condizioni?
+
+    Con il moltiplicatore fisso due strategie che non attivano dottrine non hanno
+    piu' nulla che le distingua: se le loro partite coincidono colonna per
+    colonna, gli unici canali della strategia sono davvero moltiplicatore e
+    dottrine.
+    """
+    e2 = runs[runs["esperimento"] == "E2"]
+    chiave = ["scenario_id", "difficolta_ia", "replica"]
+    per_condizione = {c: e2[e2["condizione"] == c].set_index(chiave) for c in CONDIZIONI_E2}
+    coppie, diversi_per_scenario = [], {}
+    for a, b in COPPIE_E2:
+        A = per_condizione[a]
+        B = per_condizione[b].reindex(A.index)
+        uguali = np.ones(len(A), dtype=bool)
+        for colonna in COLONNE_RIPRODUZIONE:
+            uguali &= (A[colonna].astype(str) == B[colonna].astype(str)).to_numpy()
+        coppie.append((a, b, int(uguali.sum()), len(A)))
+        for scenario in A.index.get_level_values(0)[~uguali]:
+            diversi_per_scenario.setdefault(scenario, set()).add((a, b))
+    medie = e2.groupby(["scenario_id", "condizione"])["vinta"].mean().unstack() * 100
+    delta = medie["top_ranked"] - medie["worst_ranked"]
+    piu_affine = e2[e2["condizione"] == "top_ranked"].groupby("scenario_id")
+    nomi = piu_affine["strategia_nome"].first()
+    con_dottrina = piu_affine["dottrina_ha_effetto"].max() > 0
+    return {
+        "dottrina_piu_affine": con_dottrina.to_dict(),
+        "coppie": coppie,
+        "scenari": sorted(medie.index),
+        "scenari_tutti_identici": sorted(s for s in medie.index if s not in diversi_per_scenario),
+        "scenari_diversi": sorted(diversi_per_scenario),
+        "nome_piu_affine": nomi.to_dict(),
+        "delta_per_scenario": delta.to_dict(),
+    }
+
+
+def _lettura_circolarita(d: pd.Series, livelli: pd.DataFrame, identita: Dict[str, Any]) -> str:
+    """Che cosa dice il controllo a moltiplicatore fisso, secondo il suo esito."""
+    principale, controllo = d["win_rate_principale"], d["win_rate_controllo"]
+    p = d["p_mcnemar_controllo"]
+    intervallo = (f"IC 95% [{_num(d['ic95_min_controllo'], 1)}; "
+                  f"{_num(d['ic95_max_controllo'], 1)}], McNemar {_formatta_p(p)}")
+    residui = [(s, v) for s, v in identita["delta_per_scenario"].items() if abs(v) > 1e-9]
+    if residui:
+        elenco = ", ".join(f"{s} ({identita['nome_piu_affine'].get(s, s)}, {_num(v, 1, True)} punti)"
+                           for s, v in residui)
+        if len(residui) > 1:
+            soggetto = f"gli unici scenari con una differenza nel tasso di vittoria sono {elenco}"
+        else:
+            soggetto = f"l'unico scenario con una differenza nel tasso di vittoria è {elenco}"
+        frase_residui = (" Il poco che resta viene dalle dottrine, come mostrano le partite "
+                         f"identiche: {soggetto}.")
+    else:
+        frase_residui = (" In nessuno scenario resta una differenza nel tasso di vittoria fra la "
+                         "strategia più affine e la meno affine.")
+    singoli = livelli[livelli["livello"] != "tutte"]
+    frase_livelli = ""
+    if len(singoli):
+        p_holm = holm(singoli["p_mcnemar_controllo"].tolist())
+        sotto = [(r, ph) for (_, r), ph in zip(singoli.iterrows(), p_holm) if r["p_mcnemar_controllo"] < 0.05]
+        if sotto:
+            frase_livelli = " Per livello, " + "; ".join(
+                f"il residuo al livello {NOME_LIVELLO[r['livello']].lower()} "
+                f"({_num(r['win_rate_controllo'], 1, True)} punti, {_formatta_p(r['p_mcnemar_controllo'])}) "
+                f"dopo la correzione di Holm sui {len(singoli)} livelli ha "
+                f"{_formatta_p(ph)}" for r, ph in sotto) + "."
+    if p < 0.05 and controllo > 0:
+        return (f"con il moltiplicatore fisso il gradiente scende da {_num(principale, 1, True)} a "
+                f"{_num(controllo, 1, True)} punti ({intervallo}) ma non sparisce: circa il "
+                f"{_num(controllo / principale * 100, 0)}% della differenza di E2 non passa dal "
+                "moltiplicatore. La quota è indicativa, perché con il moltiplicatore fisso cambia "
+                "anche il livello generale delle vittorie. Quella parte viene da ciò che la "
+                "strategia fa in partita oltre al moltiplicatore, cioè dagli effetti delle "
+                "dottrine: in questa misura la classifica dell'advisor coglie qualcosa che il "
+                "motore premia per una via diversa dal proprio moltiplicatore. Resta un effetto "
+                "interno al motore di gioco, quindi non è validità predittiva esterna; il resto "
+                "della differenza è coerenza per costruzione. E2 va presentato come **verifica di "
+                "coerenza fra advisor e motore**, con questa quota come parte non circolare."
+                + frase_livelli)
+    if p < 0.05 and controllo < 0:
+        return (f"con il moltiplicatore fisso il gradiente si inverte: {_num(controllo, 1, True)} "
+                f"punti ({intervallo}). Senza il moltiplicatore la strategia più affine vince meno "
+                "della meno affine: tutto il vantaggio misurato in E2 viene dal moltiplicatore, e "
+                "ciò che le strategie fanno oltre a esso va nella direzione opposta alla "
+                "classifica. E2 è quindi una **verifica di coerenza fra advisor e motore di "
+                "gioco**, non una prova di validità predittiva." + frase_livelli)
+    return (f"con il moltiplicatore fisso il gradiente non è più rilevabile: "
+            f"{_num(controllo, 1, True)} punti contro {_num(principale, 1, True)} ({intervallo}). "
+            "La differenza misurata in E2 passa quindi dal moltiplicatore, cioè dalla stessa "
+            "distanza euclidea che ordina la classifica: E2 è una **verifica di coerenza fra "
+            "advisor e motore di gioco** e non una prova di validità predittiva."
+            + frase_residui + frase_livelli
+            + " Sull'insieme degli scenari l'intervallo rende poco compatibili con i dati effetti "
+            f"residui medi superiori a {_num(d['ic95_max_controllo'], 1)} punti.")
+
+
 def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFrame],
                      controlli: List[Tuple[str, SimpleNamespace, pd.DataFrame]],
                      figure_prodotte: List[str], validi_e4: List[str]) -> None:
@@ -1188,11 +1301,14 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
     nomi_metriche = {c: e for c, e, _ in METRICHE}
 
     # che cosa varia in ciascun controllo rispetto al dataset principale
-    controlli_peso, controlli_turni = [], []
+    controlli_peso, controlli_turni, controlli_moltiplicatore = [], [], []
     for nome, controllo, tab in controlli:
         peso_c = _parametro(controllo.manifest, "combat_affinity_weight")
         turni_c = _parametro(controllo.manifest, "turni_massimi")
-        if peso_c is not None and peso_p is not None and float(peso_c) != float(peso_p):
+        moltiplicatore_c = _parametro(controllo.manifest, "moltiplicatore_giocatore")
+        if moltiplicatore_c is not None:
+            controlli_moltiplicatore.append((nome, controllo, tab, float(moltiplicatore_c)))
+        elif peso_c is not None and peso_p is not None and float(peso_c) != float(peso_p):
             controlli_peso.append((nome, controllo, tab, peso_c))
         elif turni_c is not None and turni_p is not None and int(turni_c) != int(turni_p):
             controlli_turni.append((nome, controllo, tab, int(turni_c)))
@@ -1317,11 +1433,75 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
             "delle tre strategie cambia di pochi centesimi e il loro ordine non cambia, quindi il "
             "gradiente non poteva sparire. Che resti **non** dimostra che l'advisor colga qualcosa "
             "oltre al proprio moltiplicatore: dimostra che il gradiente non dipende dallo strato di "
-            "affinità. E2 va quindi presentato come **verifica di coerenza fra advisor e motore di "
-            "gioco**. Separare davvero le due cose richiederebbe di neutralizzare il moltiplicatore "
-            "della strategia del giocatore; l'unico canale rimasto sarebbero gli effetti "
-            "dottrinali, il cui effetto in E4 non è stato rilevato."))
+            "affinità. " + (
+                "Per separare la classifica dal moltiplicatore serve neutralizzare il "
+                "moltiplicatore della strategia del giocatore: è il controllo che segue."
+                if controlli_moltiplicatore else
+                "E2 va quindi presentato come **verifica di coerenza fra advisor e motore di "
+                "gioco**. Separare davvero le due cose richiederebbe di neutralizzare il "
+                "moltiplicatore della strategia del giocatore; l'unico canale rimasto sarebbero "
+                "gli effetti dottrinali, il cui effetto in E4 non è stato rilevato.")))
         w("")
+
+    for nome, controllo, tab, moltiplicatore_c in controlli_moltiplicatore:
+        diff = tab[tab["condizione"] == "differenza più affine meno affine"]
+        d = _riga(tab, livello="tutte", condizione="differenza più affine meno affine")
+        cond = tab[tab["livello"].eq("tutte") & tab["condizione"].isin(CONDIZIONI_E2)]
+        w(f"**Controllo di circolarità** `{nome}`: il moltiplicatore di forza della strategia del "
+          f"giocatore vale {_num(moltiplicatore_c, 2)} qualunque strategia scelga, al posto della "
+          "curva da 0,30 a 2,35; quello dell'IA non cambia; stessi seed e stesso peso "
+          "dell'affinità. Fra le tre condizioni resta diverso solo ciò che la strategia fa oltre "
+          "al moltiplicatore, cioè gli effetti delle dottrine.")
+        w("")
+        if len(diff):
+            w("Differenza appaiata nel tasso di vittoria fra la strategia più affine e la meno "
+              "affine, in punti percentuali; intervallo, coppie discordanti e McNemar si "
+              "riferiscono al moltiplicatore fisso.")
+            w("")
+            w("| Livello | Differenza con il moltiplicatore della strategia | Differenza con il "
+              "moltiplicatore fisso | IC 95% | Coppie discordanti | McNemar |")
+            w("|---|---|---|---|---|---|")
+            for _, r in diff.iterrows():
+                w(f"| {NOME_LIVELLO[r['livello']]} | {_num(r['win_rate_principale'], 1, True)} | "
+                  f"{_num(r['win_rate_controllo'], 1, True)} | [{_num(r['ic95_min_controllo'], 1)}; "
+                  f"{_num(r['ic95_max_controllo'], 1)}] | {r['coppie_discordanti_controllo']} | "
+                  f"{_formatta_p(r['p_mcnemar_controllo'])} |")
+            w("")
+        if len(cond):
+            w("- Tasso di vittoria su tutti i livelli: " + "; ".join(
+                f"{_nome_condizione(r['condizione'], e2)} da {_num(r['win_rate_principale'], 1)}% "
+                f"a {_num(r['win_rate_controllo'], 1)}%" for _, r in cond.iterrows()))
+            w("- Scontri per partita con la dottrina attiva, con il moltiplicatore fisso: " + "; ".join(
+                f"{_nome_condizione(r['condizione'], e2)} {_num(r['dottrina_attiva_controllo'], 2)}"
+                for _, r in cond.iterrows()))
+        if len(d):
+            gl = int(d["n_scenari_controllo"]) - 1
+            positivi, negativi = int(d["scenari_positivi_controllo"]), int(d["scenari_negativi_controllo"])
+            w(f"- Con lo scenario come unità: differenza positiva in {positivi} "
+              f"{'scenario' if positivi == 1 else 'scenari'} su {int(d['n_scenari_controllo'])}, "
+              f"negativa in {negativi}; t({gl}) = {_num(d['t_scenari_controllo'], 2)}, "
+              f"{_formatta_p(d['p_scenari_controllo'])}")
+        if len(cond):
+            w(f"- Partite con esito identico nei due dataset: {int(cond['esiti_identici'].sum())} "
+              f"su {int(cond['n'].sum())}")
+        identita = identita_fra_condizioni(controllo.runs)
+        w("- Partite identiche in tutte le colonne fra due condizioni con lo stesso seed, dentro "
+          "questo dataset: " + "; ".join(
+              f"{_nome_condizione(a, e2)} e {_nome_condizione(b, e2)} {uguali} su {n}"
+              for a, b, uguali, n in identita["coppie"]))
+        tutti = identita["scenari_tutti_identici"]
+        if tutti:
+            diversi = identita["scenari_diversi"]
+            tutti_con_dottrina = all(identita["dottrina_piu_affine"].get(s) for s in diversi)
+            w(f"- Scenari in cui le tre strategie producono partite identiche: {len(tutti)} su "
+              f"{len(identita['scenari'])} ({', '.join(tutti)}). "
+              + ("Negli altri la strategia più affine ha una dottrina con effetto implementato: "
+                 if tutti_con_dottrina else "Negli altri: ")
+              + ", ".join(f"{s} {identita['nome_piu_affine'].get(s, s)}" for s in diversi))
+        w("")
+        if len(d):
+            w(_lettura(_lettura_circolarita(d, diff, identita)))
+            w("")
 
     # ── 3. esplorativi ─────────────────────────────────────────────
     w("## 3. Confronti esplorativi di E2")
@@ -1764,7 +1944,8 @@ def esegui(cartella: Path, separatore: str, ctx: SimpleNamespace) -> int:
     controlli = []
     for altra in _cerca_controlli(cartella):
         controllo = carica(altra, separatore)
-        tab = tabella_controllo(ds.runs, controllo.runs, ctx)
+        tab = tabella_controllo(ds.runs, controllo.runs, ctx,
+                                _parametro(controllo.manifest, "moltiplicatore_giocatore"))
         t[altra.name.removeprefix(cartella.name + "_")] = tab
         controlli.append((altra.name, controllo, tab))
         print(f"   confronto con il dataset di controllo {altra.name}: "
