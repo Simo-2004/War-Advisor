@@ -1161,17 +1161,29 @@ def _riga(df: pd.DataFrame, **filtri: Any) -> pd.Series:
 
 
 def _costanti_ia() -> Dict[str, Dict[str, Any]]:
-    """Le costanti di aggressione dei profili IA, lette dal codice del gioco."""
+    """Le costanti di aggressione dei profili IA, lette dal codice del gioco.
+
+    Il turno da cui un profilo punta al castello e' il piu' alto fra il suo
+    CASTLE_PUSH_FROM_TURN e il `castle_from_turn` della logica di manovra
+    condivisa (ai_doctrine.py): la facile ha 4 nel profilo, ma la manovra non
+    considera il castello un obiettivo prima del turno 14.
+    """
     try:
-        from gamecore.session.ai_core import (ai_easy_difficulty, ai_hard_difficulty,
+        from gamecore.session.ai_core import (ai_doctrine, ai_easy_difficulty, ai_hard_difficulty,
                                               ai_normal_difficulty)
     except ImportError:
         return {}
-    return {livello: {nome: getattr(modulo, nome, None)
-                      for nome in ("CASTLE_PUSH_FROM_TURN", "CASTLE_PUSH_MIN_UNITS",
-                                   "CASTLE_PUSH_CHANCE")}
-            for livello, modulo in (("easy", ai_easy_difficulty), ("normal", ai_normal_difficulty),
-                                    ("hard", ai_hard_difficulty))}
+    costanti = {}
+    for livello, modulo in (("easy", ai_easy_difficulty), ("normal", ai_normal_difficulty),
+                            ("hard", ai_hard_difficulty)):
+        valori = {nome: getattr(modulo, nome, None)
+                  for nome in ("CASTLE_PUSH_FROM_TURN", "CASTLE_PUSH_MIN_UNITS", "CASTLE_PUSH_CHANCE")}
+        manovra = getattr(ai_doctrine, "DOCTRINES", {}).get(livello)
+        if valori["CASTLE_PUSH_FROM_TURN"] is not None and manovra is not None:
+            valori["CASTLE_PUSH_FROM_TURN"] = max(valori["CASTLE_PUSH_FROM_TURN"],
+                                                  manovra.castle_from_turn)
+        costanti[livello] = valori
+    return costanti
 
 
 def _peso(valore: Any) -> str:
@@ -1659,8 +1671,10 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
                 "giocatore ha perso quasi tutto e il castello dell'IA è quasi intatto, e con più "
                 "turni quelle partite finiscono per lo più in sconfitta. Sono sconfitte lente. Il "
                 "codice dei profili IA è coerente con questo: la facile è quella che attacca il "
-                f"castello avversario prima e con meno truppe ({descr('easy')}; {descr('normal')}; "
-                f"{descr('hard')}). Nel codice è descritta come un profilo avventato i cui eserciti "
+                f"castello avversario con le legioni più piccole e più spesso ({descr('easy')}; "
+                f"{descr('normal')}; {descr('hard')}; il turno è il più alto fra quello del profilo "
+                "e quello da cui la logica di manovra condivisa considera il castello un obiettivo). "
+                "Nel codice è descritta come un profilo avventato i cui eserciti "
                 "piccoli sono comodi da distruggere; lo sono per un giocatore umano che difende, non "
                 "per il giocatore automatico, che non presidia mai il proprio castello. La differenza "
                 "fra i livelli dipende quindi anche dalla politica del giocatore automatico, e va "
@@ -1833,8 +1847,10 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
                 f"contesto sposta la compatibilità in tutti gli scenari (escursione fra "
                 f"{_num(e3['escursione_compat_riferimento_pt'].min(), 1)} e "
                 f"{_num(e3['escursione_compat_riferimento_pt'].max(), 1)} punti), ma in questi non "
-                "abbastanza da cambiare l'ordine. Per eserciti mono-specialistici l'advisor è quindi "
-                "poco sensibile al contesto nella raccomandazione, pur restandolo nella compatibilità."))
+                "abbastanza da cambiare l'ordine. L'invarianza dipende quindi dal margine con cui la "
+                "prima strategia prevale nel contesto di riferimento, più che dal tipo di esercito: "
+                "la raccomandazione resta stabile dove il margine è ampio, mentre la compatibilità "
+                "risponde al contesto in tutti gli scenari."))
             w("")
 
     # ── 9. figure, 10. definizioni ─────────────────────────────────
