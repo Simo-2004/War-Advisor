@@ -911,6 +911,8 @@ def _stile(plt: Any) -> None:
         "legend.frameon": False, "figure.facecolor": SUPERFICIE,
         "axes.facecolor": SUPERFICIE, "savefig.facecolor": SUPERFICIE,
         "pdf.fonttype": 42, "ps.fonttype": 42,
+        # trattino normale per i numeri negativi, come nel testo della tesi
+        "axes.unicode_minus": False,
     })
 
 
@@ -1065,42 +1067,42 @@ def _figura_forza(plt: Any, e2: pd.DataFrame, cartella: Path) -> List[str]:
 
 
 def _figura_scenari(plt: Any, e2: pd.DataFrame, cartella: Path) -> List[str]:
-    """Slopegraph: una linea per scenario, il confronto avviene dentro lo scenario."""
-    ordine = ["worst_ranked", "intermedia", "top_ranked"]
-    fig, assi = plt.subplots(1, 2, figsize=(6.6, 3.1), gridspec_kw={"wspace": 0.42})
-    for ax, (colonna, scala, etichetta) in zip(
-            assi, (("vinta", 100, "Vittorie (%)"), ("forza_residua_pct", 1, "Forza residua (%)"))):
-        medie = (e2.groupby(["scenario_id", "condizione"])[colonna].mean().unstack() * scala)[ordine]
-        for scenario, riga in medie.iterrows():
-            ax.plot(range(3), riga.values, color="#b8b6ad", linewidth=0.9, zorder=2)
-        # etichette degli scenari a destra, distanziate per non sovrapporsi
-        finali = medie[ordine[-1]].sort_values()
-        posizioni, ultimo = {}, -1e9
-        for scenario, valore in finali.items():
-            y = max(valore, ultimo + 3.4)
-            posizioni[scenario] = y
-            ultimo = y
-        for scenario, y in posizioni.items():
-            # l'etichetta puo' essere spostata per non sovrapporsi: un filo la
-            # collega al punto vero, cosi' non indica mai un valore sbagliato
-            ax.plot([2.0, 2.07], [finali[scenario], y], color=ASSE, linewidth=0.6, zorder=1)
-            ax.text(2.09, y, scenario, fontsize=6, color=MUTO, va="center")
-        r = [media_ic(medie[c]) for c in ordine]
-        centro = [x["media"] for x in r]
-        ax.fill_between(range(3), [x["ic95_min"] for x in r], [x["ic95_max"] for x in r],
-                        color=COLORE_CONDIZIONE["intermedia"], alpha=0.15, linewidth=0, zorder=1)
-        ax.plot(range(3), centro, color=COLORE_CONDIZIONE["top_ranked"], linewidth=2,
-                marker="o", markersize=5, zorder=3, label="Media degli 11 scenari (IC 95%)")
-        ax.set_xticks(range(3))
-        ranks = {c: int(round(e2.loc[e2["condizione"] == c, "rank_advisor"].median())) for c in ordine}
-        ax.set_xticklabels([f"Meno affine\n(r{ranks[ordine[0]]})", f"Intermedia\n(r{ranks[ordine[1]]})",
-                            f"Più affine\n(r{ranks[ordine[2]]})"], fontsize=7.5)
-        ax.set_xlim(-0.15, 2.3)
-        massimo = max(medie.max().max(), max(x["ic95_max"] for x in r))
-        _asse_percentuale(ax, massimo + 5, 20, etichetta)
-    assi[0].set_title("A   Vittorie, tutti i livelli", loc="left", fontsize=9)
-    assi[1].set_title("B   Forza residua, tutti i livelli", loc="left", fontsize=9)
-    assi[0].legend(loc="upper center", bbox_to_anchor=(1.1, -0.2), fontsize=7.5, handlelength=1.6)
+    """Una riga per scenario: la differenza fra strategia piu' affine e meno affine.
+
+    Il confronto avviene dentro lo scenario, quindi basta un punto per scenario
+    e la linea dello zero: si vede subito dove la differenza e' positiva e dove
+    e' nulla. In fondo la media degli 11 scenari con l'IC 95% calcolato fra
+    scenari, lo stesso dell'analisi con lo scenario come unita'.
+    """
+    scenari = sorted(e2["scenario_id"].unique())
+    y_scenari = {s: len(scenari) - i for i, s in enumerate(scenari)}
+    y_media = -0.6
+    blu, azzurro = COLORE_CONDIZIONE["top_ranked"], COLORE_CONDIZIONE["worst_ranked"]
+    fig, assi = plt.subplots(1, 2, figsize=(6.6, 3.5), sharey=True, gridspec_kw={"wspace": 0.12})
+    for ax, (colonna, scala, titolo) in zip(
+            assi, (("vinta", 100, "A   Vittorie"), ("forza_residua_pct", 1, "B   Forza residua"))):
+        medie = e2.groupby(["scenario_id", "condizione"])[colonna].mean().unstack() * scala
+        delta = medie["top_ranked"] - medie["worst_ranked"]
+        r = media_ic(delta)
+        for s in scenari:
+            ax.plot([0, delta[s]], [y_scenari[s]] * 2, color=azzurro, linewidth=1.2, zorder=2)
+        ax.scatter([delta[s] for s in scenari], [y_scenari[s] for s in scenari],
+                   s=26, color=blu, zorder=3, linewidths=0)
+        ax.errorbar([r["media"]], [y_media],
+                    xerr=[[r["media"] - r["ic95_min"]], [r["ic95_max"] - r["media"]]],
+                    fmt="D", color=blu, markersize=6, capsize=3, elinewidth=1.4, zorder=3)
+        ax.axvline(0, color=INCHIOSTRO_2, linewidth=0.9, zorder=1)
+        ax.axhline(0.2, color=GRIGLIA, linewidth=0.8, zorder=0)
+        ax.grid(axis="x")
+        ax.grid(axis="y", visible=False)
+        sinistra = min(-5.0, float(delta.min()) - 3)
+        ax.set_xlim(sinistra, max(float(delta.max()), r["ic95_max"]) + 4)
+        ax.set_xlabel("Punti percentuali", fontsize=8)
+        ax.set_title(titolo, loc="left", fontsize=9)
+        ax.tick_params(axis="y", length=0)
+    assi[0].set_yticks([y_scenari[s] for s in scenari] + [y_media])
+    assi[0].set_yticklabels(scenari + ["Media"], fontsize=8)
+    assi[0].set_ylim(y_media - 0.8, len(scenari) + 0.6)
     return _salva(fig, cartella, "fig3_e2_per_scenario")
 
 
@@ -1862,9 +1864,10 @@ def scrivi_riepilogo(percorso: Path, ds: SimpleNamespace, t: Dict[str, pd.DataFr
                          "e livello dell'IA.",
         "fig2_e2_forza_residua": "E2. Distribuzione della forza residua per strategia e livello "
                                  "dell'IA; la linea è la mediana, il rombo la media.",
-        "fig3_e2_per_scenario": "E2. Esito per scenario al variare della strategia: ogni linea "
-                                "grigia è uno degli 11 scenari, la linea blu è la media con il "
-                                "suo intervallo al 95% calcolato fra scenari.",
+        "fig3_e2_per_scenario": "E2. Per ogni scenario, differenza fra la strategia più affine "
+                                "e la meno affine nel tasso di vittoria (A) e nella forza residua "
+                                "(B); in fondo la media degli 11 scenari con il suo intervallo al "
+                                "95% calcolato fra scenari.",
         "fig4_e4_dottrine": "E4. Tasso di vittoria con dottrina attiva e disattivata nei soli "
                             "scenari in cui la dottrina si attiva, e aggregato; sopra ogni gruppo "
                             "la differenza appaiata in punti percentuali.",
