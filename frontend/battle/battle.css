@@ -56,6 +56,30 @@
             background: #fff;
         }
 
+        .header-links {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Stessa forma di "Torna al simulatore", in oro tenue: si nota
+           senza rubare la scena alla battaglia. */
+        .manual-link {
+            display: inline-block;
+            text-decoration: none;
+            color: #7a4f00;
+            font-weight: 700;
+            border: 1px solid #f6c453;
+            border-radius: 10px;
+            padding: 10px 14px;
+            background: #fff6dd;
+        }
+
+        .manual-link:hover {
+            background: #ffefc2;
+        }
+
         .panel {
             background: var(--card-bg);
             padding: 20px;

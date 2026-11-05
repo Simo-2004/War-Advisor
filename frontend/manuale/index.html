@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War Advisor - Manuale di gioco</title>
+    <!-- Tutto locale, niente font o librerie da internet: il gioco gira offline
+         e questa cartella viaggia dentro l'exe insieme al resto di frontend/. -->
+    <link rel="stylesheet" href="/static/manuale/manuale.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-title">
+            <span class="topbar-mark" aria-hidden="true">📖</span>
+            <div>
+                <h1>Manuale di gioco</h1>
+                <p>War Advisor, spiegato a chi lo apre per la prima volta</p>
+            </div>
+        </div>
+        <button class="close-btn" type="button" id="chiudiManuale">✕ Chiudi il manuale</button>
+    </header>
+    <p class="close-note" id="avvisoChiusura" hidden>
+        Il browser non ha chiuso la scheda da solo: chiudila tu (Ctrl+W) e torna alla scheda della battaglia.
+        La partita è ancora lì, ferma al turno in cui l'hai lasciata.
+    </p>
+
+    <div class="layout">
+        <nav class="toc" aria-label="Indice">
+            <p class="toc-title">Indice</p>
+            <ol>
+                <li><a href="#in-breve">La partita in breve</a></li>
+                <li><a href="#simulatore">Il simulatore</a></li>
+                <li><a href="#campo">Il campo di battaglia</a></li>
+                <li><a href="#turni">I turni</a></li>
+                <li><a href="#legioni">Le legioni</a></li>
+                <li><a href="#combattimento">Combattimenti e assedi</a></li>
+                <li><a href="#strategie">Strategie e dottrine</a></li>
+                <li><a href="#economia">Grux, miniere e reclute</a></li>
+                <li><a href="#difesa">Presidi e fortificazioni</a></li>
+                <li><a href="#abilita">Abilità e Mercato Nero</a></li>
+                <li><a href="#ia">L'IA e la difficoltà</a></li>
+                <li><a href="#fine">Fine della partita</a></li>
+                <li><a href="#prima-partita">La tua prima partita</a></li>
+                <li><a href="#comandi">Comandi rapidi</a></li>
+                <li><a href="#parole">Le parole del gioco</a></li>
+            </ol>
+        </nav>
+
+        <main class="content">
+
+            <p class="lead">
+                War Advisor è un gioco di strategia a turni. Tu e l'intelligenza artificiale (da qui in poi
+                <b>l'IA</b>) avete un castello ciascuno, ai due capi di una mappa: vince chi abbatte per primo
+                il castello dell'altro. Questo manuale parte da zero. La prima volta leggilo in ordine; dopo,
+                usa l'indice per ritrovare quello che ti serve.
+            </p>
+            <div class="box box-info">
+                <p class="box-title">Come leggere il manuale</p>
+                <p>I tasti sono scritti così: <kbd>E</kbd>. I pulsanti del gioco sono in grassetto, per esempio
+                   <b>Calcola strategia</b>. Clicca un'immagine per vederla più grande.</p>
+            </div>
+
+            <!-- ── 1 ─────────────────────────────────────────────── -->
+            <section id="in-breve">
+                <h2><span class="num">1</span>La partita in breve</h2>
+                <p>Una partita ha due momenti.</p>
+                <ol>
+                    <li><b>Il simulatore.</b> Scegli le truppe con un budget di 400 <b>grux</b>, la moneta del
+                        gioco, e chiedi un parere all'<b>Advisor</b>, il consigliere del gioco: ti dice quale
+                        strategia si adatta meglio al tuo esercito.</li>
+                    <li><b>Il campo di battaglia.</b> Giochi a turni contro l'IA: muovi le truppe, conquisti
+                        terreno, guadagni grux con le miniere, compri rinforzi e attacchi il castello nemico.</li>
+                </ol>
+                <ol class="flow" aria-label="Le tappe di una partita">
+                    <li>Componi l'esercito</li>
+                    <li>Calcola la strategia</li>
+                    <li>Scendi in battaglia</li>
+                    <li>Forma le legioni</li>
+                    <li>Premi <kbd>E</kbd> per far passare il turno</li>
+                    <li>Conquista e rinforzati</li>
+                    <li>Abbatti il castello nemico</li>
+                </ol>
+                <p><b>Vinci</b> quando i punti ferita del castello nemico arrivano a zero.
+                   <b>Perdi</b> quando ci arrivano quelli del tuo.</p>
+            </section>
+
+            <!-- ── 2 ─────────────────────────────────────────────── -->
+            <section id="simulatore">
+                <h2><span class="num">2</span>Il simulatore: prepara l'esercito</h2>
+                <p>È la prima schermata che vedi quando apri il gioco.</p>
+                <figure>
+                    <img src="/static/manuale/img/simulatore.webp" width="1037" height="840" alt="Il simulatore: a sinistra la scelta delle truppe e del campo, a destra il consiglio dell'Advisor" loading="lazy">
+                    <figcaption>Il simulatore dopo il calcolo: a sinistra l'esercito e il campo, a destra il
+                        consiglio dell'Advisor.</figcaption>
+                </figure>
+
+                <h3>Passo 1: scegli le truppe</h3>
+                <ul>
+                    <li>Hai 400 grux. Il prezzo di ogni truppa è scritto nel riquadro giallo.</li>
+                    <li>Clicca una truppa, o il suo pulsante <b>+</b>, per aggiungerne una. Il pulsante <b>-</b>
+                        ne toglie una. Puoi prendere più truppe dello stesso tipo.</li>
+                    <li>La barra <b>Tesoreria</b> mostra quanti grux ti restano. Quello che non spendi non va
+                        perso: lo ritrovi in battaglia.</li>
+                </ul>
+                <table>
+                    <thead>
+                        <tr><th>Truppa</th><th>Costo</th><th>In breve</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Fanteria Pesante</td><td>75</td><td>Forte in attacco e in difesa, ma lenta.</td></tr>
+                        <tr><td>Cavalleria Leggera</td><td>70</td><td>Velocissima, ma si difende male.</td></tr>
+                        <tr><td>Arcieri</td><td>80</td><td>Colpiscono da lontano.</td></tr>
+                        <tr><td>Esploratori</td><td>70</td><td>Veloci e furtivi, adatti agli attacchi a sorpresa.</td></tr>
+                        <tr><td>Picchieri</td><td>70</td><td>Ottimi in difesa, soprattutto contro la cavalleria.</td></tr>
+                        <tr><td>Artiglieria</td><td>60</td><td>Fuoco potentissimo ma quasi immobile. Contro le mura
+                            dei castelli conta più di tutte le altre truppe.</td></tr>
+                        <tr><td>Guaritori</td><td>90</td><td>Attaccano poco, ma fanno perdere meno truppe alla
+                            loro legione.</td></tr>
+                        <tr><td>Assassini</td><td>70</td><td>Colpi rapidissimi e grande furtività, poca disciplina.</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Passo 2: scegli il campo</h3>
+                <ul>
+                    <li><b>Terreno</b> (obbligatorio): Pianura, Foresta, Montagna, Fiume o Palude.</li>
+                    <li><b>Meteo</b> e <b>Stato truppe</b> (facoltativi).</li>
+                </ul>
+                <div class="box box-info">
+                    <p class="box-title">Da sapere</p>
+                    <p>Queste scelte servono solo a fare la simulazione. In battaglia porti soltanto l'esercito:
+                       il meteo viene sorteggiato e le truppe partono sempre fresche. Prova più combinazioni per
+                       vedere come cambia il consiglio.</p>
+                </div>
+
+                <h3>Passo 3: calcola la strategia</h3>
+                <p>Premi <b>Calcola strategia</b>. L'Advisor confronta il tuo esercito con le 10 strategie del
+                   gioco e ti mostra tre risposte:</p>
+                <ul>
+                    <li><b>Principale</b>: la strategia consigliata, la più adatta alle tue truppe;</li>
+                    <li><b>Alternativa</b>: la seconda scelta;</li>
+                    <li><b>Da evitare</b>: la meno adatta.</li>
+                </ul>
+                <p>La <b>compatibilità</b> è una percentuale: più è alta, meglio la strategia si adatta al tuo
+                   esercito. La <b>distanza</b> dice la stessa cosa al contrario: più è piccola, meglio è. Il
+                   grafico in basso mette a confronto il tuo esercito con il profilo ideale della strategia
+                   consigliata.</p>
+                <div class="box box-tip">
+                    <p class="box-title">Perché conta</p>
+                    <p>In battaglia la compatibilità diventa forza: una legione con la strategia giusta combatte
+                       molto meglio di una con la strategia sbagliata (lo spiega il <a href="#strategie">capitolo 7</a>).</p>
+                </div>
+
+                <h3>Passo 4: scendi in battaglia</h3>
+                <p>Premi <b>Scendi in battaglia</b>. Si apre il campo di battaglia, con la strategia consigliata
+                   già assegnata al tuo esercito. Potrai cambiarla quando vuoi.</p>
+            </section>
+
+            <!-- ── 3 ─────────────────────────────────────────────── -->
+            <section id="campo">
+                <h2><span class="num">3</span>Il campo di battaglia</h2>
+                <figure>
+                    <img src="/static/manuale/img/campo-di-battaglia.webp" width="1176" height="735" alt="La schermata del campo di battaglia con le sue parti numerate da 1 a 7" loading="lazy">
+                    <figcaption>Le parti dello schermo, con i numeri della lista qui sotto.</figcaption>
+                </figure>
+                <ol class="legend">
+                    <li><b>Barra dei comandi</b>, a sinistra, con le schede <b>Guerra</b> (azioni, reclutamento,
+                        strategie), <b>Legioni</b> (formare e guidare le legioni), <b>Vista</b> (come disporre lo
+                        schermo) e <b>Sistema</b> (difficoltà dell'IA e impostazioni). La scheda <b>Debug</b>
+                        serve a chi sviluppa il gioco: per giocare non ti serve.</li>
+                    <li><b>Pulsanti in alto</b>: <b>Manuale</b> apre questa guida in un'altra scheda,
+                        <b>Torna al simulatore</b> riporta alla prima schermata.</li>
+                    <li><b>Barra di stato</b>: la legione selezionata, il turno, il momento della giornata con il
+                        meteo, e un suggerimento su cosa fare.</li>
+                    <li><b>La mappa.</b></li>
+                    <li><b>Economia e Presidi</b>: i tuoi grux, le miniere, le truppe rimaste nel castello e quello
+                        che sai dell'IA.</li>
+                    <li><b>Log pericoli</b>: ti avvisa quando l'IA schiera un'armata o manda rinforzi al fronte.</li>
+                    <li><b>Registri</b>: Log PLAYER e Log IA raccontano cosa è successo, turno per turno.</li>
+                </ol>
+
+                <h3>La mappa</h3>
+                <figure>
+                    <img src="/static/manuale/img/mappa.webp" width="693" height="323" alt="Una parte della mappa con il castello del giocatore, alcune legioni, una miniera, un presidio e una fortificazione" loading="lazy">
+                    <figcaption>La tua metà della mappa: il castello in basso, tre legioni (AVA, MIN, GEN), una
+                        miniera, un presidio e una fortificazione.</figcaption>
+                </figure>
+                <ul>
+                    <li>La mappa ha 14 righe e 16 colonne. Il tuo castello 🏰 è in basso al centro, quello
+                        dell'IA in alto.</li>
+                    <li>Ogni cella mostra il suo terreno: <b>PIA</b> Pianura, <b>FOR</b> Foresta, <b>MON</b>
+                        Montagna, <b>PAL</b> Palude, <b>FIU</b> Fiume.</li>
+                    <li>Le celle colorate di verde sono tue, quelle colorate di rosso sono dell'IA. Le altre,
+                        con il colore del loro terreno, non sono ancora di nessuno.</li>
+                    <li>Le etichette colorate sulle celle sono le legioni, con le prime lettere del nome (AVA
+                        per "Avanguardia"). Le tue hanno colori diversi, quelle dell'IA sono rosse.</li>
+                </ul>
+                <table>
+                    <thead><tr><th>Simbolo</th><th>Significato</th></tr></thead>
+                    <tbody>
+                        <tr><td>🏰</td><td>Castello.</td></tr>
+                        <tr><td>⛏</td><td>Miniera.</td></tr>
+                        <tr><td>🧱 con un numero</td><td>Fortificazione, con il suo livello.</td></tr>
+                        <tr><td>Numero in un tondino</td><td>Truppe di presidio sulla cella.</td></tr>
+                        <tr><td>★</td><td>Cella strategica: un punto importante vicino al centro. L'IA prova a
+                            prenderle.</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Il fiume e i guadi</h3>
+                <p>Il fiume attraversa la mappa e <b>non si può attraversare</b>. Si passa solo dai
+                   <b>guadi</b>, i punti in cui la fila di celle FIU si interrompe. Sono soltanto due o tre per
+                   mappa, quindi sono i passaggi più importanti della partita: chi li tiene decide dove si
+                   combatte.</p>
+
+                <h3>Muoversi costa tempo</h3>
+                <p>Una legione si muove di una cella alla volta, in orizzontale o in verticale. Su un terreno
+                   difficile ci mette più turni a fare un passo:</p>
+                <table class="narrow">
+                    <thead><tr><th>Terreno</th><th>Turni per entrare in una cella</th></tr></thead>
+                    <tbody>
+                        <tr><td>Pianura</td><td>1</td></tr>
+                        <tr><td>Foresta</td><td>2</td></tr>
+                        <tr><td>Palude</td><td>2</td></tr>
+                        <tr><td>Montagna</td><td>3</td></tr>
+                        <tr><td>Fiume</td><td>non si entra</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- ── 4 ─────────────────────────────────────────────── -->
+            <section id="turni">
+                <h2><span class="num">4</span>I turni</h2>
+                <div class="box box-key">
+                    <p class="box-title">La regola più importante</p>
+                    <p>Il gioco non va avanti da solo: <b>ogni volta che premi <kbd>E</kbd> passa un turno.</b></p>
+                </div>
+                <p>Tra un turno e l'altro puoi fare con calma tutto quello che vuoi: formare legioni, comprare
+                   truppe, costruire, cambiare strategia. Quando sei pronto, premi <kbd>E</kbd>. In ogni turno:</p>
+                <ul>
+                    <li>le tue legioni fanno un passo verso la loro meta, poi si muove l'IA;</li>
+                    <li>le legioni che si incontrano combattono;</li>
+                    <li>le miniere pagano i grux;</li>
+                    <li>le ricerche dell'albero delle abilità vanno avanti.</li>
+                </ul>
+                <p>Premi <kbd>H</kbd> per vedere l'elenco dei comandi rapidi. Li trovi anche nel
+                   <a href="#comandi">capitolo 14</a>.</p>
+                <div class="box box-warn">
+                    <p class="box-title">Attenzione</p>
+                    <p><b>Non ricaricare la pagina della battaglia</b> (tasto F5) e non premere <b>Torna al
+                       simulatore</b> se vuoi continuare a giocare: la battaglia ricomincerebbe da capo, su una
+                       mappa nuova. Per questo il manuale si apre in una scheda separata.</p>
+                </div>
+            </section>
+
+            <!-- ── 5 ─────────────────────────────────────────────── -->
+            <section id="legioni">
+                <h2><span class="num">5</span>Le legioni: come muovere le truppe</h2>
+                <p>All'inizio tutte le tue truppe sono nel castello: sono la <b>riserva</b>. La riserva non si
+                   muove e non combatte. Per agire devi formare delle <b>legioni</b>, cioè gruppi di truppe che
+                   marciano insieme. Puoi avere al massimo <b>4 legioni</b> in campo.</p>
+
+                <h3>Come si forma una legione</h3>
+                <figure class="figure-side">
+                    <img src="/static/manuale/img/crea-legione.webp" width="352" height="624" alt="Il modulo Crea Legione nella scheda Legioni, con nome, tipo, composizione e destinazione" loading="lazy">
+                    <figcaption>Il modulo <b>Crea Legione</b>.</figcaption>
+                </figure>
+                <ol class="steps">
+                    <li>Nella barra a sinistra apri la scheda <b>Legioni</b>, poi la sottoscheda <b>Legioni</b>.</li>
+                    <li>Scrivi un nome, per esempio "Avanguardia".</li>
+                    <li>Scegli il <b>tipo</b>: Esercito, Mineraria o Costruzione (vedi la tabella qui sotto).</li>
+                    <li>In <b>Composizione</b> scegli quante truppe di ogni tipo prendere dalla riserva, con
+                        <b>+</b> e <b>-</b>.</li>
+                    <li>Dai un ordine. Con <b>Seleziona cella</b> clicchi una cella della mappa e la legione ci
+                        va. Con <b>Cattura area</b> clicchi e trascini sulla mappa: la legione conquista una dopo
+                        l'altra le celle dell'area (al massimo 40). Puoi dare uno solo dei due ordini.</li>
+                    <li>Premi <b>Invia Legione</b>: il pulsante si accende quando la legione ha un nome, almeno una
+                        truppa e un ordine. La legione nasce sul castello, o accanto se è occupato, e parte al turno
+                        successivo.</li>
+                </ol>
+
+                <h3>I tre tipi di legione</h3>
+                <p>Tutte le legioni camminano, conquistano e combattono. Due tipi, in più, sanno costruire:</p>
+                <table>
+                    <thead><tr><th>Tipo</th><th>Cosa sa fare in più</th></tr></thead>
+                    <tbody>
+                        <tr><td>⚔ Esercito</td><td>Niente: è la legione da battaglia.</td></tr>
+                        <tr><td>⛏ Mineraria</td><td>Scava miniere (<a href="#economia">capitolo 8</a>).</td></tr>
+                        <tr><td>🧱 Costruzione</td><td>Costruisce fortificazioni (<a href="#difesa">capitolo 9</a>).</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Conquistare il territorio</h3>
+                <p>Ogni cella su cui passa una tua legione diventa tua. Più celle controlli, più miniere puoi
+                   costruire: se ne apre una ogni 4 celle.</p>
+
+                <h3>Guidare una legione già in campo</h3>
+                <p>Ogni legione ha una scheda nell'elenco <b>Legioni Attive</b>, sotto il modulo. Ci trovi il
+                   tipo, lo stato delle truppe, la destinazione, la composizione e le barre di fatica e morale.
+                   I pulsanti sono tre:</p>
+                <ul>
+                    <li><b>Nuova dest.</b>: scegli un'altra cella da raggiungere;</li>
+                    <li><b>Nuova catt.</b>: disegni un'altra area da conquistare;</li>
+                    <li><b>Richiama in riserva</b>: le truppe tornano subito nel castello, ma la legione perde
+                        la posizione che aveva raggiunto.</li>
+                </ul>
+            </section>
+
+            <!-- ── 6 ─────────────────────────────────────────────── -->
+            <section id="combattimento">
+                <h2><span class="num">6</span>Combattimenti e assedi</h2>
+
+                <h3>Scontri tra legioni</h3>
+                <p>Quando una tua legione e una dell'IA finiscono sulla stessa cella, combattono. Il risultato
+                   dipende da:</p>
+                <ul>
+                    <li>quante truppe ci sono e di che tipo;</li>
+                    <li>quanto la strategia della legione è adatta alle sue truppe;</li>
+                    <li>il terreno e il meteo;</li>
+                    <li>la stanchezza e il morale;</li>
+                    <li>le difese della cella, cioè presidi e fortificazioni.</li>
+                </ul>
+                <p>Chi perde lascia sul campo una parte delle truppe e <b>si ritira al proprio castello</b>: la
+                   legione non sparisce, ma deve rifare tutta la strada.</p>
+
+                <h3>Assaltare un castello</h3>
+                <p>Quando una legione entra nella cella del castello nemico, lo assalta e gli toglie punti
+                   ferita. Se il castello resiste, la legione <b>torna subito al suo castello</b> e devi
+                   rimandarla con un nuovo ordine.</p>
+                <ul>
+                    <li>Ogni castello parte con 220 punti ferita, più 8 per ogni truppa dell'esercito iniziale.</li>
+                    <li>Un assalto toglie da 8 a 65 punti ferita: tanti di più quanto la legione è forte rispetto
+                        alle difese del castello. Di solito servono più assalti.</li>
+                    <li>L'Artiglieria è la truppa che fa più danni alle mura.</li>
+                    <li>Il registro annota ogni assalto, con i danni e i punti ferita rimasti (per esempio
+                        "HP 260->212").</li>
+                </ul>
+                <div class="box box-tip">
+                    <p class="box-title">Consiglio</p>
+                    <p>Tieni pronte due legioni d'attacco: mentre una torna a casa dopo l'assalto, l'altra è già in
+                       marcia verso il castello nemico.</p>
+                </div>
+
+                <h3>Stanchezza, morale e veterani</h3>
+                <p>Ogni legione ha uno stato, che vedi nella sua scheda:</p>
+                <table>
+                    <thead><tr><th>Stato</th><th>Quando succede</th><th>Che effetto ha</th></tr></thead>
+                    <tbody>
+                        <tr><td>🌿 Fresche</td><td>Tutto a posto.</td><td>Nessuno.</td></tr>
+                        <tr><td>😓 Stanche</td><td>La fatica supera 45, per marce lunghe, terreni duri e battaglie.</td>
+                            <td>Mobilità e disciplina più basse.</td></tr>
+                        <tr><td>💔 Demoralizzate</td><td>Il morale scende sotto 38, per sconfitte e assalti respinti.</td>
+                            <td>Disciplina e attacco più bassi.</td></tr>
+                        <tr><td>🎖 Veterane</td><td>Dopo 3 vittorie.</td>
+                            <td>Si stancano la metà e perdono meno morale.</td></tr>
+                    </tbody>
+                </table>
+                <p>Per recuperare, una legione deve restare ferma: dopo 2 turni di riposo fatica e morale
+                   migliorano, e più è vicina al castello più recupera in fretta.</p>
+
+                <h3>Giorno, notte e meteo</h3>
+                <p>La barra di stato mostra il momento della giornata e il meteo, per esempio
+                   <span class="pill">☀️ Giorno · Nebbia</span>. Cambiano ogni 20-26 turni e modificano le
+                   capacità delle truppe:</p>
+                <ul>
+                    <li><b>Notte</b>: furtività molto alta, disciplina a rischio;</li>
+                    <li><b>Pioggia</b>: tiro e mobilità ridotti;</li>
+                    <li><b>Nebbia</b>: furtività alta, tiro dimezzato.</li>
+                </ul>
+                <p>Quando il meteo cambia, apri <b>Info Strategie</b> (<a href="#strategie">capitolo 7</a>): la
+                   strategia migliore potrebbe essere cambiata.</p>
+            </section>
+
+            <!-- ── 7 ─────────────────────────────────────────────── -->
+            <section id="strategie">
+                <h2><span class="num">7</span>Strategie e dottrine</h2>
+                <p>Ogni legione combatte con una sua strategia. Appena formata prende la <b>strategia
+                   generale</b>, cioè quella scelta nel simulatore.</p>
+                <p>Quanto la strategia è adatta alle truppe della legione diventa un moltiplicatore di forza: con
+                   la strategia sbagliata la legione combatte con circa un terzo della sua forza (×0.30), con
+                   quella giusta con più del doppio (×2.35). Scegliere bene la strategia conta quanto avere
+                   tante truppe.</p>
+
+                <h3>Cambiare strategia</h3>
+                <figure class="figure-side">
+                    <img src="/static/manuale/img/strategia.webp" width="297" height="209" alt="Il riquadro Strategia della scheda Guerra, con i due menu e i pulsanti Applica Strategia e Info Strategie" loading="lazy">
+                    <figcaption>Il riquadro <b>Strategia</b>, in fondo alla scheda Guerra.</figcaption>
+                </figure>
+                <ol class="steps">
+                    <li>Apri la scheda <b>Guerra</b> e scendi fino al riquadro <b>Strategia</b>.</li>
+                    <li>Nel primo menu scegli a chi applicarla: <b>Generale</b> (riserva e legioni nuove)
+                        oppure una legione in campo.</li>
+                    <li>Nel secondo menu scegli la strategia.</li>
+                    <li>Premi <b>Applica Strategia</b>.</li>
+                </ol>
+                <p>Dopo aver cambiato la strategia di una legione devi aspettare 3 turni prima di cambiarla di
+                   nuovo.</p>
+
+                <h3>Info Strategie: l'Advisor in battaglia</h3>
+                <figure>
+                    <img src="/static/manuale/img/info-strategie.webp" width="735" height="675" alt="La finestra Info Strategie con le strategie consigliate per la riserva e per ogni legione" loading="lazy">
+                    <figcaption>La finestra <b>Info Strategie</b>: un consiglio per la riserva e uno per ogni legione.</figcaption>
+                </figure>
+                <p>Il pulsante <b>Info Strategie</b>, sotto <b>Applica Strategia</b>, apre l'Advisor di battaglia.
+                   Per la riserva e per ogni legione mostra le strategie più adatte in quel momento, tenendo conto
+                   del terreno, del meteo e dello stato delle truppe. All'inizio è una stima e può sbagliare un
+                   po': diventa esatta con l'abilità <b>Industria dello Spionaggio</b>.</p>
+
+                <h3>Le dottrine</h3>
+                <p>Cinque strategie hanno un effetto speciale, la <b>dottrina</b>, che si accende solo se la
+                   legione ha le truppe giuste. L'effetto parte dal turno dopo quello in cui hai assegnato la
+                   strategia.</p>
+                <table>
+                    <thead><tr><th>Strategia</th><th>Truppe che servono</th><th>Effetto</th></tr></thead>
+                    <tbody>
+                        <tr><td>Manovra sui Fianchi</td><td>Almeno 3 Cavallerie Leggere.</td>
+                            <td>+40 punti movimento: la foresta non rallenta più e la montagna costa un turno in meno.</td></tr>
+                        <tr><td>Difesa in Profondità</td><td>Almeno 3 Picchieri.</td>
+                            <td>Se perde, arretra di una sola cella invece di tornare al castello.</td></tr>
+                        <tr><td>Accerchiamento</td><td>Arcieri, Assassini, Cavalleria Leggera e Fanteria Pesante, tutti insieme.</td>
+                            <td>Quando attacca, il nemico perde il 25% di truppe in più.</td></tr>
+                        <tr><td>Schermo e Fuoco</td><td>Almeno un'Artiglieria e una Fanteria Pesante o un Picchiere.</td>
+                            <td>Costruisce fortificazioni anche se non è una legione di Costruzione, gratis fino al
+                                livello 2 (non sul castello).</td></tr>
+                        <tr><td>Blitz</td><td>Solo Cavalleria Leggera.</td>
+                            <td>Chi perde contro di lei perde il doppio del morale.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- ── 8 ─────────────────────────────────────────────── -->
+            <section id="economia">
+                <h2><span class="num">8</span>Grux, miniere e reclute</h2>
+                <figure class="figure-side">
+                    <img src="/static/manuale/img/economia.webp" width="297" height="414" alt="Il riquadro Economia e Presidi con grux, miniere e truppe del giocatore e dell'IA, e sotto il Log pericoli" loading="lazy">
+                    <figcaption><b>Economia e Presidi</b> e, sotto, il <b>Log pericoli</b>.</figcaption>
+                </figure>
+                <h3>I grux</h3>
+                <p>I grux sono la moneta del gioco e li vedi nel riquadro <b>Economia e Presidi</b>. All'inizio hai
+                   quelli che hai risparmiato nel simulatore; poi li guadagni con le miniere. Sotto i grux c'è il
+                   numero di truppe rimaste nel castello: quando le hai mandate tutte in campo con le legioni, il
+                   riquadro scrive "Nessuna unità in campo".</p>
+                <p>Accanto ai grux ci sono due numeri: ⛏ indica quante miniere hai e quanti posti per miniere
+                   nuove sono ancora liberi (per esempio "⛏ 1 · +1"); 🛡 indica quante truppe potresti
+                   lasciare di presidio.</p>
+
+                <h3>Le miniere</h3>
+                <ol class="steps">
+                    <li>Porta una legione <b>Mineraria</b> su una cella tua.</li>
+                    <li>Premi <kbd>2</kbd>, o il pulsante <b>Miniera</b> nella scheda Guerra: le celle dove puoi
+                        scavare si illuminano.</li>
+                    <li>Clicca la cella della legione mineraria.</li>
+                </ol>
+                <ul>
+                    <li>Ogni 4 celle che controlli si apre il posto per una miniera.</li>
+                    <li>Le miniere sono gratis e pagano a ogni turno. Rendono di più in montagna (circa 17 grux),
+                        poi in pianura (circa 14), in foresta (circa 12) e in palude (circa 10).</li>
+                    <li>Dopo le prime quattro, ogni miniera nuova rende un po' meno.</li>
+                    <li>Non si scava sul fiume né sul castello.</li>
+                </ul>
+
+                <h3>Comprare truppe</h3>
+                <p>Nella scheda <b>Guerra</b>, riquadro <b>Reclutamento</b>, scegli la truppa e premi
+                   <b>Compra Unità</b> (o il tasto <kbd>R</kbd>). La nuova truppa entra nella riserva, dentro il
+                   castello: per portarla al fronte forma una nuova legione. Tra un acquisto e il successivo
+                   devi aspettare 2 turni.</p>
+                <p>Con <b>Autoreclutamento</b> scegli una truppa e per quanti turni comprarla (da 1 a 40): il gioco
+                   la compra da solo appena può. Se mancano i grux il piano aspetta, e dopo 8 turni di attesa si
+                   ferma.</p>
+            </section>
+
+            <!-- ── 9 ─────────────────────────────────────────────── -->
+            <section id="difesa">
+                <h2><span class="num">9</span>Difendersi: presidi e fortificazioni</h2>
+                <div class="box box-warn">
+                    <p class="box-title">Attenzione</p>
+                    <p>Le truppe in riserva <b>non difendono il castello</b>. Lo difendono soltanto i presidi sulla
+                       sua cella e le fortificazioni.</p>
+                </div>
+
+                <figure class="figure-side">
+                    <img src="/static/manuale/img/scheda-guerra.webp" width="308" height="715" alt="La scheda Guerra con le azioni Presidio, Miniera e Fortifica, il riquadro Presidio, l'albero delle abilità, il mercato nero, il reclutamento e la strategia" loading="lazy">
+                    <figcaption>La scheda <b>Guerra</b>: in alto i pulsanti <b>Presidio</b>, <b>Miniera</b> e
+                        <b>Fortifica</b>, sotto il riquadro <b>Presidio</b>.</figcaption>
+                </figure>
+
+                <h3>Il presidio (tasto 1)</h3>
+                <p>Una legione con almeno 2 truppe può lasciarne una a guardia della cella dove si trova.</p>
+                <ol class="steps">
+                    <li>Nel riquadro <b>Presidio</b> della scheda Guerra scegli la legione (<b>Legione che
+                        distacca</b>) e la truppa da lasciare (<b>Unità da distaccare</b>).</li>
+                    <li>Premi <kbd>1</kbd>, o il pulsante <b>Presidio</b>: si illuminano le celle delle legioni
+                        che hanno almeno 2 truppe.</li>
+                    <li>Clicca la cella della legione.</li>
+                </ol>
+                <p>Una cella normale ospita 1 presidio, più 1 per ogni livello di fortificazione, fino a 4. Il
+                   castello ne ospita fino a 4.</p>
+                <div class="box box-tip">
+                    <p class="box-title">Come proteggere il castello</p>
+                    <p>Forma una legione di 2 truppe e dalle come destinazione il tuo castello 🏰 (<b>Seleziona
+                       cella</b>, poi clic sul castello). Se il castello è libero, la legione nasce proprio lì
+                       sopra. Poi scegli quella legione nel riquadro <b>Presidio</b>, premi <kbd>1</kbd> e clicca il
+                       castello: una delle due truppe resta di guardia.</p>
+                </div>
+
+                <h3>La fortificazione (tasto 3)</h3>
+                <p>Servono una legione di <b>Costruzione</b> e un po' di grux. Premi <kbd>3</kbd>, o il pulsante
+                   <b>Fortifica</b>, e clicca la cella della legione.</p>
+                <ul>
+                    <li>Il primo livello costa 45 grux, i successivi sempre di più.</li>
+                    <li>Una cella fortificata si difende meglio e ospita più presidi.</li>
+                    <li>Sul castello si arriva fino al livello 4, e ogni livello riduce del 10% i danni degli
+                        assalti.</li>
+                </ul>
+                <p>Con l'abilità <b>Costruzione Territoriale</b> puoi scavare miniere e costruire fortificazioni su
+                   qualsiasi cella tua, non solo dove si trova la legione.</p>
+            </section>
+
+            <!-- ── 10 ────────────────────────────────────────────── -->
+            <section id="abilita">
+                <h2><span class="num">10</span>Albero delle abilità e Mercato Nero</h2>
+                <figure>
+                    <img src="/static/manuale/img/albero-abilita.webp" width="825" height="675" alt="La finestra dell'albero delle abilità con i tre percorsi Ingegneria, Economia e Stili di Gioco" loading="lazy">
+                    <figcaption>La finestra dell'albero delle abilità (nel gioco si chiama <b>Skill Tree</b>), con i
+                        suoi tre percorsi.</figcaption>
+                </figure>
+                <p>Premi <kbd>A</kbd>, o il pulsante <b>Albero Abilità</b> nella scheda Guerra. Le abilità sono
+                   miglioramenti permanenti:</p>
+                <ul>
+                    <li>se ne ricerca una alla volta;</li>
+                    <li>la paghi quando la avvii, e diventa attiva dopo un certo numero di turni;</li>
+                    <li>alcune si possono avviare solo da un certo turno in poi, altre solo dopo averne completata
+                        un'altra;</li>
+                    <li>tra gli <b>Stili di Gioco</b> puoi sceglierne uno solo.</li>
+                </ul>
+                <table>
+                    <thead><tr><th>Abilità</th><th>Costo</th><th>Turni</th><th>Effetto</th></tr></thead>
+                    <tbody>
+                        <tr class="group"><td colspan="4">Ingegneria</td></tr>
+                        <tr><td>Costruzione Territoriale</td><td>220</td><td>32</td><td>Costruisci su qualsiasi cella tua.</td></tr>
+                        <tr><td>Trinceramento Rapido</td><td>150</td><td>16</td><td>Fortificazioni scontate del 28%.</td></tr>
+                        <tr><td>Dottrina Fortezza</td><td>300</td><td>24</td><td>Presidi e difensori +10%, castello -10% di danni
+                            dagli assalti. Richiede Trinceramento Rapido.</td></tr>
+                        <tr><td>Costruzione Caotica</td><td>460</td><td>30</td><td>Ogni legione può costruire miniere e
+                            fortificazioni. Richiede Costruzione Territoriale.</td></tr>
+                        <tr class="group"><td colspan="4">Economia</td></tr>
+                        <tr><td>Linee di Rifornimento</td><td>170</td><td>18</td><td>Miniere +10%.</td></tr>
+                        <tr><td>Industria Bellica</td><td>330</td><td>24</td><td>Truppe scontate del 12% e un turno di
+                            attesa in meno tra due acquisti. Richiede Linee di Rifornimento.</td></tr>
+                        <tr><td>Mercato Nero</td><td>250</td><td>20</td><td>Apre il Mercato Nero.</td></tr>
+                        <tr><td>Industria dello Spionaggio</td><td>340</td><td>26</td><td>Info Strategie e autoreclutamento
+                            diventano esatti, e si apre il dossier sul nemico. Richiede Mercato Nero.</td></tr>
+                        <tr class="group"><td colspan="4">Stili di Gioco (uno solo)</td></tr>
+                        <tr><td>Scuola d'Assedio</td><td>280</td><td>22</td><td>Artiglieria +3% in campo e +9% contro mura e
+                            fortificazioni.</td></tr>
+                        <tr><td>Scuola d'Urto</td><td>280</td><td>22</td><td>In attacco Cavalleria Leggera +6% e Fanteria
+                            Pesante +4%.</td></tr>
+                        <tr><td>Scuola dell'Ombra</td><td>280</td><td>22</td><td>Esploratori e Assassini +6% in attacco e +3%
+                            in difesa.</td></tr>
+                        <tr><td>Scuola del Baluardo</td><td>280</td><td>22</td><td>Tutte le truppe +4% in difesa, Picchieri
+                            +5%.</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Il Mercato Nero (tasto M)</h3>
+                <p>Si apre dopo aver ricercato l'abilità <b>Mercato Nero</b>. Vende blocchi di 2-6 truppe già
+                   pronte, scontate dal 18% al 45%, e per comprarle non devi aspettare i 2 turni tra un acquisto
+                   e l'altro. Ogni offerta è unica e dura pochi turni: chi arriva tardi la trova già sparita.</p>
+            </section>
+
+            <!-- ── 11 ────────────────────────────────────────────── -->
+            <section id="ia">
+                <h2><span class="num">11</span>L'IA e i livelli di difficoltà</h2>
+                <p>La partita parte al livello <b>Facile</b>. Puoi cambiarlo quando vuoi: apri la scheda
+                   <b>Sistema</b>, scegli il livello e premi <b>Applica IA</b>.</p>
+                <table>
+                    <thead><tr><th>Livello</th><th>Come gioca</th></tr></thead>
+                    <tbody>
+                        <tr><td>Facile</td><td>Parte con un esercito più piccolo e non sempre recluta o costruisce.
+                            Però è la più avventata: attacca presto il tuo castello con gruppi piccoli. Se lo
+                            lasci sguarnito fa danni, ma i suoi gruppi sono facili da battere.</td></tr>
+                        <tr><td>Normale</td><td>Esercito più solido, recluta e ricerca quasi sempre. Attacca
+                            quando ha una legione abbastanza forte.</td></tr>
+                        <tr><td>Difficile</td><td>Si rinforza attorno al suo castello e difende bene la sua metà
+                            campo: se una tua legione la supera, le va addosso. Attacca il tuo castello solo a
+                            partita inoltrata, con un esercito molto grande.</td></tr>
+                        <tr><td>Incubo</td><td>Gioca in due fasi: prima si trincera e accumula risorse, poi, quando
+                            è in vantaggio, marcia sul tuo castello con tutto e non torna più indietro. Parte con
+                            più grux, le sue miniere rendono di più e cambia strategia osservando come giochi.</td></tr>
+                    </tbody>
+                </table>
+                <p>Nel riquadro <b>Economia e Presidi</b> vedi i grux dell'IA e una parte delle sue truppe: quelle
+                   che non conosci sono segnate con <b>?</b>.</p>
+            </section>
+
+            <!-- ── 12 ────────────────────────────────────────────── -->
+            <section id="fine">
+                <h2><span class="num">12</span>Fine della partita</h2>
+                <figure>
+                    <img src="/static/manuale/img/fine-partita.webp" width="576" height="407" alt="La schermata di vittoria con il resoconto della partita e i pulsanti per rigiocare" loading="lazy">
+                    <figcaption>La schermata di fine partita.</figcaption>
+                </figure>
+                <p>Quando un castello cade compare la schermata di <b>Vittoria</b> o di <b>Sconfitta</b>, con il
+                   resoconto della partita. Da qui puoi scegliere:</p>
+                <ul>
+                    <li><b>Rigioca stesso esercito</b>: una nuova battaglia con le stesse truppe;</li>
+                    <li><b>Nuovo esercito</b>: torni al simulatore;</li>
+                    <li><b>Guarda la mappa</b>: chiudi la schermata e osservi come è finita.</li>
+                </ul>
+                <p>Anche a partita in corso, nella scheda <b>Sistema</b>, il menu con l'ingranaggio ⚙ ha
+                   <b>Ricomincia scontro</b>, che fa ripartire la battaglia con lo stesso esercito.</p>
+            </section>
+
+            <!-- ── 13 ────────────────────────────────────────────── -->
+            <section id="prima-partita">
+                <h2><span class="num">13</span>La tua prima partita, passo per passo</h2>
+                <ol class="steps">
+                    <li>Nel simulatore prendi un esercito misto, per esempio 2 Fanterie Pesanti, 2 Arcieri e 1
+                        Picchiere (380 grux). Scegli la Pianura, premi <b>Calcola strategia</b> e poi
+                        <b>Scendi in battaglia</b>.</li>
+                    <li>Forma una legione <b>Esercito</b> con le 2 Fanterie Pesanti e i 2 Arcieri e mandala verso
+                        il centro, su una cella con la stellina ★ dalla tua parte del fiume.</li>
+                    <li>Forma una legione <b>Mineraria</b> con il Picchiere e mandala su una montagna vicina al
+                        castello.</li>
+                    <li>Premi <kbd>E</kbd> qualche volta e guarda cosa succede nei registri.</li>
+                    <li>Quando controlli almeno 4 celle e la legione mineraria è arrivata, premi <kbd>2</kbd> e
+                        clicca la sua cella: ecco la tua prima miniera.</li>
+                    <li>Con i grux compra nuove truppe (<kbd>R</kbd>), una ogni 2 turni. Forma nuove legioni per
+                        portarle al fronte, e lascia qualche presidio sul castello (<a href="#difesa">capitolo 9</a>).</li>
+                    <li>Tieni d'occhio il <b>Log pericoli</b>: se un'armata nemica si avvicina, rinforza il castello.</li>
+                    <li>Quando hai una legione grande, meglio se con un po' di Artiglieria, mandala sul castello
+                        nemico. Dopo ogni assalto torna a casa: rimandala, oppure alterna due legioni.</li>
+                </ol>
+                <div class="box box-tip">
+                    <p class="box-title">Se qualcosa non torna</p>
+                    <p>Leggi la barra di stato sopra la mappa e il Log PLAYER: quando un'azione non si può fare, il
+                       gioco scrive lì il motivo.</p>
+                </div>
+            </section>
+
+            <!-- ── 14 ────────────────────────────────────────────── -->
+            <section id="comandi">
+                <h2><span class="num">14</span>Comandi rapidi</h2>
+                <table class="narrow">
+                    <thead><tr><th>Tasto</th><th>Cosa fa</th></tr></thead>
+                    <tbody>
+                        <tr><td><kbd>E</kbd></td><td>Fa passare il turno.</td></tr>
+                        <tr><td><kbd>H</kbd></td><td>Mostra o nasconde l'elenco dei comandi.</td></tr>
+                        <tr><td><kbd>1</kbd></td><td>Presidio.</td></tr>
+                        <tr><td><kbd>2</kbd></td><td>Miniera.</td></tr>
+                        <tr><td><kbd>3</kbd></td><td>Fortificazione.</td></tr>
+                        <tr><td><kbd>Esc</kbd></td><td>Annulla l'azione in corso e chiude le finestre aperte.</td></tr>
+                        <tr><td><kbd>R</kbd></td><td>Compra la truppa scelta nel riquadro Reclutamento.</td></tr>
+                        <tr><td><kbd>A</kbd></td><td>Apre l'albero delle abilità.</td></tr>
+                        <tr><td><kbd>M</kbd></td><td>Apre il Mercato Nero.</td></tr>
+                        <tr><td><kbd>V</kbd></td><td>Cambia la vista: Split (mappa e registri), Mappa, Log.</td></tr>
+                    </tbody>
+                </table>
+                <p>Le stesse viste si scelgono anche dalla scheda <b>Vista</b>. In basso a destra c'è il pulsante
+                   con l'altoparlante 🔊, che accende e spegne musica ed effetti sonori.</p>
+            </section>
+
+            <!-- ── 15 ────────────────────────────────────────────── -->
+            <section id="parole">
+                <h2><span class="num">15</span>Le parole del gioco</h2>
+                <dl class="glossary">
+                    <dt>Advisor</dt><dd>Il consigliere del gioco: confronta le tue truppe con le strategie e ti dice
+                        quale scegliere.</dd>
+                    <dt>Grux</dt><dd>La moneta del gioco.</dd>
+                    <dt>Riserva</dt><dd>Le truppe ferme nel castello. Non si muovono e non lo difendono.</dd>
+                    <dt>Legione</dt><dd>Un gruppo di truppe che marcia e combatte insieme. Al massimo 4.</dd>
+                    <dt>Presidio</dt><dd>Una truppa lasciata a guardia di una cella.</dd>
+                    <dt>Fortificazione</dt><dd>Una difesa costruita su una cella, a livelli.</dd>
+                    <dt>Miniera</dt><dd>Fa guadagnare grux a ogni turno.</dd>
+                    <dt>Compatibilità</dt><dd>Quanto una strategia è adatta a un gruppo di truppe, in percentuale.</dd>
+                    <dt>Dottrina</dt><dd>L'effetto speciale di cinque strategie, che si accende solo con le truppe giuste.</dd>
+                    <dt>Guado</dt><dd>Un punto in cui si può passare il fiume.</dd>
+                    <dt>Cella strategica</dt><dd>Una cella con la stellina ★, importante per il controllo del centro.</dd>
+                    <dt>Punti ferita (HP)</dt><dd>La salute di un castello: a zero, il castello cade.</dd>
+                    <dt>Turno</dt><dd>Un passo della partita. Lo fai passare tu con il tasto <kbd>E</kbd>.</dd>
+                </dl>
+            </section>
+
+            <p class="back-top"><a href="#in-breve">↑ Torna all'inizio</a></p>
+        </main>
+    </div>
+
+    <div class="zoom" id="zoom" hidden>
+        <img id="zoomImg" alt="">
+        <p class="zoom-hint">Clicca o premi Esc per chiudere</p>
+    </div>
+
+    <script src="/static/manuale/manuale.js"></script>
+</body>
+</html>
