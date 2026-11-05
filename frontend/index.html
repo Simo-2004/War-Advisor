@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>War Advisor - Conflict Strategy Recommender</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js sta nel gioco, non su internet: preso dal CDN, senza
+         connessione il calcolo si fermava su "Chart is not defined". -->
+    <script src="/static/vendor/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/style-index/index.css">
 </head>
 <body>

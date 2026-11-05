@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>War Advisor - Battaglia</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js locale, come nel simulatore: il gioco deve girare offline. -->
+    <script src="/static/vendor/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/battle/battle.css">
     <link rel="stylesheet" href="/static/battle/legions/legions_panel.css">
     <!-- [ENDGAME-MODULE] Schermata di vittoria/sconfitta. Puramente
@@ -31,7 +32,12 @@
                 <h1>⚔️ Campo di Battaglia</h1>
                 <p>La simulazione è terminata. Qui inizi la partita vera contro l'IA.</p>
             </div>
-            <a class="ghost-link" href="/">← Torna al simulatore</a>
+            <div class="header-links">
+                <!-- Il manuale si apre in un'altra scheda: tornare a questa
+                     pagina ricaricandola farebbe ricominciare la partita. -->
+                <a class="manual-link" href="/static/manuale/index.html" target="_blank" rel="noopener">📖 Manuale</a>
+                <a class="ghost-link" href="/">← Torna al simulatore</a>
+            </div>
         </div>
 
         <div class="panel" id="battlePanel" style="display:none;">

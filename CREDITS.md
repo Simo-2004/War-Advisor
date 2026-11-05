@@ -50,6 +50,16 @@ to it in exactly one place — the `tema` entry in `SUONI`, at the top of
 [`frontend/battle/audio/audio.js`](frontend/battle/audio/audio.js) — so replacing
 the file and that one line is the whole job.
 
+## JavaScript libraries
+
+| File in this repo | Library | Version | Source | License |
+|---|---|---|---|---|
+| `frontend/vendor/chart.umd.min.js` | [Chart.js](https://www.chartjs.org) | 4.6.1 | [npm: chart.js](https://www.npmjs.com/package/chart.js) | [MIT](frontend/vendor/chart.js-LICENSE.md) |
+
+The file is the unmodified UMD build from the npm package, copyright banner
+included. It ships with the game instead of being loaded from a CDN, so the
+radar charts and the simulator keep working without an internet connection.
+
 ## Everything else
 
 `assets/icon.ico` and the rest of the repository are not covered by this page.

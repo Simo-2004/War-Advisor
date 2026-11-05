@@ -1,0 +1,640 @@
+/* ══════════════════════════════════════════════════════════════════
+   War Advisor — Manuale di gioco
+
+   Stessa identità del simulatore (blu notte, cremisi, oro, carattere di
+   sistema): chi passa dal gioco al manuale deve riconoscerlo al volo.
+   Nessuna risorsa esterna, perché il gioco gira offline.
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+    --navy-900: #0d1226;
+    --navy-800: #161d3b;
+    --navy-700: #232c52;
+    --crimson: #e94560;
+    --crimson-soft: #fde8ec;
+    --gold: #f6c453;
+    --gold-soft: #fff6dd;
+    --gold-ink: #7a4f00;
+    --teal: #2bb3c0;
+    --teal-soft: #e3f6f8;
+    --green: #16a34a;
+
+    --ink: #1e2437;
+    --ink-soft: #5b6480;
+    --surface: #ffffff;
+    --surface-alt: #f7f9fd;
+    --border: #dde3f0;
+    --bg: #f2f4fb;
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow-sm: 0 1px 3px rgba(16, 24, 56, 0.06);
+    --shadow: 0 6px 20px rgba(16, 24, 56, 0.09);
+    --topbar-h: 72px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(115deg, #e6eaf7 0%, var(--bg) 50%, #efe9f8 100%);
+    background-attachment: fixed;
+    line-height: 1.6;
+    font-size: 16px;
+}
+
+/* ── Testata ────────────────────────────────────────────────────── */
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    min-height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 28px;
+    color: #fff;
+    background: linear-gradient(115deg, var(--navy-900) 0%, var(--navy-700) 60%, #3a2a66 100%);
+    box-shadow: var(--shadow);
+}
+
+.topbar-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.topbar-mark {
+    font-size: 30px;
+}
+
+.topbar h1 {
+    font-size: 1.35em;
+    line-height: 1.2;
+}
+
+.topbar p {
+    color: #c9cfe6;
+    font-size: 0.9em;
+}
+
+.close-btn {
+    font: inherit;
+    font-weight: 700;
+    color: var(--gold-ink);
+    background: var(--gold-soft);
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-sm);
+    padding: 9px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.close-btn:hover {
+    background: #ffefc2;
+}
+
+.close-note {
+    max-width: 1180px;
+    margin: 14px auto 0;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--gold-soft);
+    border: 1px solid var(--gold);
+    color: var(--gold-ink);
+}
+
+/* ── Impaginazione ──────────────────────────────────────────────── */
+
+.layout {
+    max-width: 1180px;
+    margin: 24px auto 48px;
+    padding: 0 20px;
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.toc {
+    position: sticky;
+    top: calc(var(--topbar-h) + 20px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 16px 14px;
+    max-height: calc(100vh - var(--topbar-h) - 40px);
+    overflow-y: auto;
+}
+
+.toc-title {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.78em;
+    color: var(--ink-soft);
+    margin: 0 6px 8px;
+}
+
+.toc ol {
+    list-style: none;
+    counter-reset: voce;
+}
+
+.toc li {
+    counter-increment: voce;
+}
+
+.toc a {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.93em;
+    line-height: 1.35;
+}
+
+.toc a::before {
+    content: counter(voce);
+    flex: 0 0 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    font-size: 0.8em;
+    font-weight: 700;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toc a:hover {
+    background: var(--surface-alt);
+}
+
+.toc a.is-current {
+    background: var(--crimson-soft);
+    color: #9b1c33;
+    font-weight: 700;
+}
+
+.toc a.is-current::before {
+    background: var(--crimson);
+    border-color: var(--crimson);
+    color: #fff;
+}
+
+.content {
+    min-width: 0;
+}
+
+/* ── Testo ──────────────────────────────────────────────────────── */
+
+.lead {
+    font-size: 1.08em;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 24px 28px;
+    margin-top: 20px;
+    scroll-margin-top: calc(var(--topbar-h) + 16px);
+    /* Le figure affiancate al testo non devono uscire dalla scheda. */
+    display: flow-root;
+}
+
+h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.45em;
+    line-height: 1.25;
+    color: var(--navy-800);
+    margin-bottom: 14px;
+}
+
+h2 .num {
+    flex: 0 0 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--navy-800);
+    color: #fff;
+    font-size: 0.72em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+h3 {
+    font-size: 1.12em;
+    color: var(--navy-700);
+    margin: 22px 0 8px;
+}
+
+p {
+    margin: 8px 0;
+}
+
+ul,
+ol {
+    margin: 8px 0 8px 24px;
+}
+
+li {
+    margin: 4px 0;
+}
+
+a {
+    color: #b8253f;
+}
+
+kbd {
+    display: inline-block;
+    min-width: 1.7em;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid #b9c2d9;
+    border-bottom-width: 3px;
+    background: #fff;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 0.9em;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--navy-800);
+}
+
+.pill {
+    display: inline-block;
+    padding: 1px 10px;
+    border-radius: 999px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #b45309;
+    font-size: 0.9em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ── Le tappe della partita ─────────────────────────────────────── */
+
+.flow {
+    list-style: none;
+    margin: 16px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 6px;
+    counter-reset: tappa;
+}
+
+.flow li {
+    counter-increment: tappa;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    font-size: 0.92em;
+    font-weight: 600;
+}
+
+.flow li::before {
+    content: counter(tappa);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--crimson);
+    color: #fff;
+    font-size: 0.78em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flow li:not(:last-child)::after {
+    content: '›';
+    margin-left: 4px;
+    color: var(--ink-soft);
+    font-weight: 700;
+}
+
+/* ── Elenchi numerati di passi ──────────────────────────────────── */
+
+ol.steps,
+ol.legend {
+    list-style: none;
+    margin-left: 0;
+    counter-reset: passo;
+}
+
+ol.steps > li,
+ol.legend > li {
+    counter-increment: passo;
+    position: relative;
+    padding-left: 38px;
+    margin: 10px 0;
+}
+
+ol.steps > li::before,
+ol.legend > li::before {
+    content: counter(passo);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--navy-800);
+    color: #fff;
+    font-size: 0.82em;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Nella legenda i numeri sono gli stessi stampati sullo screenshot. */
+ol.legend > li::before {
+    background: var(--crimson);
+}
+
+/* ── Riquadri ───────────────────────────────────────────────────── */
+
+.box {
+    /* flow-root: accanto a una figura affiancata il riquadro si stringe,
+       invece di passarle sotto con lo sfondo. */
+    display: flow-root;
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    margin: 14px 0;
+    border: 1px solid;
+    border-left-width: 5px;
+}
+
+.box p {
+    margin: 4px 0;
+}
+
+.box-title {
+    font-weight: 800;
+    font-size: 0.86em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.box-info {
+    background: var(--teal-soft);
+    border-color: #9edbe1;
+    border-left-color: var(--teal);
+}
+
+.box-info .box-title {
+    color: #157f89;
+}
+
+.box-tip {
+    background: var(--gold-soft);
+    border-color: #f5d98c;
+    border-left-color: var(--gold);
+}
+
+.box-tip .box-title {
+    color: var(--gold-ink);
+}
+
+.box-warn {
+    background: var(--crimson-soft);
+    border-color: #f5b6c1;
+    border-left-color: var(--crimson);
+}
+
+.box-warn .box-title {
+    color: #9b1c33;
+}
+
+.box-key {
+    background: var(--navy-800);
+    border-color: var(--navy-800);
+    border-left-color: var(--gold);
+    color: #fff;
+    font-size: 1.08em;
+}
+
+.box-key .box-title {
+    color: var(--gold);
+}
+
+.box-key kbd {
+    color: var(--navy-800);
+}
+
+/* ── Tabelle ────────────────────────────────────────────────────── */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.94em;
+}
+
+table.narrow {
+    width: auto;
+    min-width: 320px;
+}
+
+th,
+td {
+    text-align: left;
+    vertical-align: top;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background: var(--surface-alt);
+    color: var(--navy-700);
+    font-size: 0.86em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+tr.group td {
+    background: #eef1fa;
+    color: var(--navy-700);
+    font-weight: 800;
+    font-size: 0.86em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ── Immagini ───────────────────────────────────────────────────── */
+
+figure {
+    margin: 16px 0;
+}
+
+figure img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    cursor: zoom-in;
+    background: var(--surface-alt);
+}
+
+figcaption {
+    font-size: 0.88em;
+    color: var(--ink-soft);
+    margin-top: 6px;
+}
+
+/* Gli screenshot alti e stretti (la barra dei comandi) stanno di fianco
+   al testo invece di occupare tutta la riga. */
+.figure-side {
+    float: right;
+    width: 270px;
+    margin: 6px 0 12px 24px;
+}
+
+/* ── Glossario ──────────────────────────────────────────────────── */
+
+.glossary dt {
+    font-weight: 700;
+    color: var(--navy-800);
+    margin-top: 10px;
+}
+
+.glossary dd {
+    margin-left: 0;
+    color: var(--ink);
+}
+
+.back-top {
+    text-align: right;
+    margin-top: 16px;
+}
+
+/* ── Ingrandimento delle immagini ───────────────────────────────── */
+
+.zoom {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(13, 18, 38, 0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    cursor: zoom-out;
+}
+
+.zoom[hidden] {
+    display: none;
+}
+
+.zoom img {
+    max-width: 100%;
+    max-height: calc(100vh - 80px);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    background: #fff;
+}
+
+.zoom-hint {
+    color: #c9cfe6;
+    font-size: 0.9em;
+}
+
+/* ── Schermi stretti ────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+
+    .toc {
+        position: static;
+        max-height: none;
+    }
+
+    .figure-side {
+        float: none;
+        width: auto;
+        max-width: 320px;
+        margin: 16px 0;
+    }
+}
+
+@media (max-width: 600px) {
+    .topbar {
+        padding: 10px 14px;
+    }
+
+    .topbar p {
+        display: none;
+    }
+
+    .layout {
+        padding: 0 12px;
+    }
+
+    section {
+        padding: 18px 16px;
+    }
+
+    /* Le tabelle larghe (abilità, dottrine) scorrono da sole invece di
+       allargare tutta la pagina. */
+    table {
+        display: block;
+        overflow-x: auto;
+    }
+
+    table.narrow {
+        min-width: 0;
+    }
+
+    th,
+    td {
+        padding: 6px 8px;
+    }
+
+    td:first-child {
+        white-space: normal;
+    }
+}
